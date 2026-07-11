@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Song, PlaybackHistoryItem } from '../types';
-import { Play, Pause, SkipForward, SkipBack, ExternalLink, RefreshCw, Volume2, Clock, Hourglass, Plus, Minus, Info, Music, Tv, HelpCircle } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, ExternalLink, RefreshCw, Volume2, Clock, Hourglass, Plus, Minus, Info, Music, Tv, HelpCircle, Minimize2 } from 'lucide-react';
 
 interface PlayerProps {
   currentSong: Song | null;
@@ -18,6 +18,8 @@ interface PlayerProps {
   incrementPlayCount: (bvid: string) => void;
   audioOnlyMode: boolean;
   setAudioOnlyMode: (val: boolean) => void;
+  isMiniCDMode?: boolean;
+  setIsMiniCDMode?: (val: boolean) => void;
 }
 
 export default function Player({
@@ -36,6 +38,8 @@ export default function Player({
   incrementPlayCount,
   audioOnlyMode,
   setAudioOnlyMode,
+  isMiniCDMode,
+  setIsMiniCDMode,
 }: PlayerProps) {
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [isTimerActive, setIsTimerActive] = useState<boolean>(true);
@@ -222,7 +226,127 @@ export default function Player({
     setIframeReloadKey((prev) => prev + 1);
   };
 
-  const isMini = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mode') === 'mini';
+  if (isMiniCDMode) {
+    return (
+      <div className="relative flex flex-col items-center justify-center p-6 bg-[#09090e]/80 backdrop-blur-xl border border-white/10 rounded-[32px] shadow-2xl w-full max-w-[320px] aspect-square mx-auto overflow-hidden group">
+        {/* Hidden Bilibili iframe to keep play state */}
+        <div className="absolute pointer-events-none opacity-[0.01] w-1 h-1 z-0">
+          {isTimerActive ? (
+            <iframe
+              key={`${currentSong.bvid}-${iframeReloadKey}`}
+              id="bilibili-player-iframe"
+              src={getBilibiliEmbedUrl()}
+              scrolling="no"
+              border="0"
+              frameBorder="no"
+              framespacing="0"
+              allowFullScreen={true}
+              allow="autoplay; encrypted-media; fullscreen"
+              className="absolute top-0 left-0 w-full h-full"
+              referrerPolicy="no-referrer"
+            ></iframe>
+          ) : null}
+        </div>
+
+        {/* Ambient subtle glow */}
+        <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/10 to-pink-500/10 pointer-events-none opacity-40"></div>
+
+        {/* Outer Circular Ring */}
+        <div className="relative z-10 flex flex-col items-center justify-center">
+          {/* Spinning CD Cover */}
+          <button
+            onClick={togglePlayback}
+            className="relative focus:outline-none focus:ring-0 active:scale-95 transition-transform cursor-pointer"
+            title={isTimerActive ? "点击暂停" : "点击播放"}
+          >
+            {/* Spinning Vinyl CD */}
+            <div className={`w-44 h-44 rounded-full bg-slate-950 border-[6px] border-slate-900 shadow-2xl relative flex items-center justify-center overflow-hidden ${isTimerActive && timeLeft > 0 ? 'animate-spin [animation-duration:15s]' : ''}`}>
+              <div className="absolute inset-0 border-[10px] border-black/40 rounded-full"></div>
+              {/* CD Cover Image in Center */}
+              <img
+                src={currentSong.cover}
+                alt={currentSong.title}
+                referrerPolicy="no-referrer"
+                className="w-24 h-24 rounded-full object-cover border-4 border-slate-900"
+              />
+              {/* Vinyl grooves */}
+              <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_45%,rgba(255,255,255,0.03)_46%,transparent_47%,rgba(255,255,255,0.03)_50%,transparent_51%)] pointer-events-none"></div>
+              
+              {/* Play/Pause overlay icon on hover */}
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-200">
+                <div className="w-12 h-12 rounded-full bg-cyan-400 text-slate-950 flex items-center justify-center shadow-lg">
+                  {isTimerActive ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-0.5" />}
+                </div>
+              </div>
+            </div>
+          </button>
+
+          {/* Mini Playback Status Floating Pill */}
+          <div className="absolute -bottom-2 px-3 py-1 bg-slate-950/95 border border-white/5 text-[10px] text-slate-300 rounded-full shadow-lg font-mono flex items-center gap-1.5 backdrop-blur max-w-[200px]">
+            <span className={`w-1.5 h-1.5 rounded-full ${isTimerActive ? 'bg-cyan-400 animate-pulse' : 'bg-slate-600'}`}></span>
+            <span className="truncate">{currentSong.title}</span>
+          </div>
+        </div>
+
+        {/* Back to Large view controller button */}
+        <button
+          onClick={() => setIsMiniCDMode && setIsMiniCDMode(false)}
+          className="absolute top-4 right-4 text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 p-2 rounded-full transition-all cursor-pointer shadow-lg border border-white/5"
+          title="返回大窗口"
+        >
+          <Minimize2 className="w-4 h-4 rotate-180" />
+        </button>
+
+        {/* Quick controls underneath */}
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <button
+            onClick={(e) => { e.stopPropagation(); onPrev(); }}
+            className="text-slate-400 hover:text-white p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 cursor-pointer transition-all active:scale-90"
+            title="上一首"
+          >
+            <SkipBack className="w-3.5 h-3.5" />
+          </button>
+          
+          <button
+            onClick={(e) => { e.stopPropagation(); togglePlayback(); }}
+            className="text-slate-950 bg-cyan-400 hover:bg-cyan-300 p-2 rounded-full cursor-pointer transition-all active:scale-90 shadow-lg shadow-cyan-400/10"
+            title={isTimerActive ? "暂停" : "播放"}
+          >
+            {isTimerActive ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
+          </button>
+
+          <button
+            onClick={(e) => { e.stopPropagation(); onNext(); }}
+            className="text-slate-400 hover:text-white p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 cursor-pointer transition-all active:scale-90"
+            title="下一首"
+          >
+            <SkipForward className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Background Playback Gesture Overlay inside Mini View */}
+        {showResumeBanner && (
+          <button
+            onClick={() => {
+              setIframeReloadKey((prev) => prev + 1);
+              setShowResumeBanner(false);
+            }}
+            className="absolute inset-0 bg-[#08080c]/95 backdrop-blur-md z-30 flex flex-col items-center justify-center p-4 text-center cursor-pointer active:scale-95 transition-transform"
+          >
+            <div className="w-12 h-12 rounded-full bg-cyan-500/10 flex items-center justify-center mb-3 text-cyan-400 border border-cyan-500/20 shadow-lg animate-bounce">
+              <Music className="w-6 h-6" />
+            </div>
+            <h4 className="text-[10px] font-bold text-slate-100 tracking-wider">
+              点击屏幕恢复声音
+            </h4>
+            <p className="mt-1 text-[9px] text-slate-400 max-w-[180px] leading-relaxed">
+              因浏览器安全限制，后台切歌需点击任意位置即可恢复
+            </p>
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div id="active-player-card" className="bg-[#08080c] border border-white/5 rounded-3xl p-6 shadow-2xl space-y-6">
@@ -233,20 +357,14 @@ export default function Player({
           <span className="text-xs font-mono font-bold tracking-widest text-slate-300 uppercase">
             NOW PLAYING / 正在播放
           </span>
-          {!isMini && (
+          {setIsMiniCDMode && (
             <button
-              onClick={() => {
-                window.open(
-                  window.location.origin + '?mode=mini',
-                  'BiliMusicMiniPlayer',
-                  'width=520,height=720,scrollbars=no,resizable=yes'
-                );
-              }}
-              className="flex items-center gap-1 text-[10px] bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 px-2 py-0.5 rounded transition-all cursor-pointer font-bold"
-              title="独立悬浮小窗口播放，100% 解决后台切歌无声音、被挂起和需要点击恢复的问题！"
+              onClick={() => setIsMiniCDMode(true)}
+              className="flex items-center gap-1.5 text-[10px] bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 px-2.5 py-1 rounded transition-all cursor-pointer font-bold"
+              title="极简 CD 挂机模式：在当前页面变身为精美旋转 CD 播放器，极度简洁，杜绝干扰！"
             >
-              <ExternalLink className="w-3 h-3" />
-              <span>开启无感后台播放小窗口</span>
+              <Minimize2 className="w-3 h-3" />
+              <span>进入极简 CD 挂机模式</span>
             </button>
           )}
         </div>
@@ -389,9 +507,9 @@ export default function Player({
             <p className="mt-2 text-[11px] text-slate-400 max-w-xs leading-relaxed">
               由于浏览器媒体播放安全策略，在后台切歌后需要点击一次来恢复声音。轻点网页任意位置即可瞬间启动！
             </p>
-            {!isMini && (
+            {!isMiniCDMode && (
               <p className="mt-2 text-[10px] text-cyan-400 max-w-xs font-semibold bg-cyan-500/5 px-2.5 py-1.5 rounded-lg border border-cyan-500/15">
-                💡 提示：点击上方的【开启无感后台播放小窗口】独立窗口听歌，可完美避开浏览器安全限制，挂起状态下亦能连续自动播放！
+                💡 提示：点击上方的【进入极简 CD 挂机模式】，在当前页面变身为精美旋转 CD，极致纯粹，连续自动播放不卡顿！
               </p>
             )}
             <div className="mt-4 px-3 py-1 bg-cyan-500/10 border border-cyan-500/20 text-[10px] text-cyan-400 rounded-full font-mono">

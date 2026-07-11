@@ -8,17 +8,9 @@ import { PlaylistConfig, Song, PlaybackHistoryItem } from './types';
 import { Music, FolderHeart, BarChart3, Radio, HelpCircle, AlertCircle, Shuffle } from 'lucide-react';
 
 export default function App() {
-  const [isMiniMode] = useState<boolean>(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      return params.get('mode') === 'mini';
-    } catch {
-      return false;
-    }
-  });
-
+  const [isMiniCDMode, setIsMiniCDMode] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'player' | 'songlist' | 'playlists' | 'stats'>('player');
-  const [showSplash, setShowSplash] = useState<boolean>(!isMiniMode);
+  const [showSplash, setShowSplash] = useState<boolean>(true);
 
   // Core state loaded from LocalStorage
   const [playlists, setPlaylists] = useState<PlaylistConfig[]>(() => {
@@ -114,15 +106,11 @@ export default function App() {
 
   // Hide opening logo splash screen after 2.5 seconds
   useEffect(() => {
-    if (isMiniMode) {
-      setShowSplash(false);
-      return;
-    }
     const timer = setTimeout(() => {
       setShowSplash(false);
     }, 2500);
     return () => clearTimeout(timer);
-  }, [isMiniMode]);
+  }, []);
 
   // Combined active songs pool
   const allActiveSongs = useMemo(() => {
@@ -240,10 +228,14 @@ export default function App() {
     setHistory([]);
   };
 
-  if (isMiniMode) {
+  if (isMiniCDMode) {
     return (
-      <div id="root-app-container" className="min-h-screen bg-[#030305] text-slate-100 flex flex-col justify-between selection:bg-cyan-500/30 selection:text-cyan-200">
-        <main className="flex-1 max-w-2xl w-full mx-auto p-4 flex flex-col justify-center">
+      <div id="root-app-container" className="min-h-screen bg-[#030305] text-slate-100 flex items-center justify-center p-4 selection:bg-cyan-500/30 selection:text-cyan-200 relative overflow-hidden">
+        {/* Subtle background color visualizers */}
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full bg-cyan-500/5 blur-[120px] pointer-events-none"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full bg-pink-500/5 blur-[120px] pointer-events-none"></div>
+        
+        <main className="relative z-10 w-full max-w-sm">
           <Player
             currentSong={currentSong}
             onNext={playNextSong}
@@ -260,11 +252,10 @@ export default function App() {
             incrementPlayCount={incrementPlayCount}
             audioOnlyMode={audioOnlyMode}
             setAudioOnlyMode={setAudioOnlyMode}
+            isMiniCDMode={isMiniCDMode}
+            setIsMiniCDMode={setIsMiniCDMode}
           />
         </main>
-        <footer className="py-3 text-center text-[10px] text-slate-500 font-mono border-t border-white/5 bg-[#050508]/80 backdrop-blur-sm">
-          <span>BiliMusic Mini-Player Mode · 独立窗口不激活亦可持续顺畅播放</span>
-        </footer>
       </div>
     );
   }
@@ -451,6 +442,8 @@ export default function App() {
               incrementPlayCount={incrementPlayCount}
               audioOnlyMode={audioOnlyMode}
               setAudioOnlyMode={setAudioOnlyMode}
+              isMiniCDMode={isMiniCDMode}
+              setIsMiniCDMode={setIsMiniCDMode}
             />
           </div>
 
