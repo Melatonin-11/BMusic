@@ -1,0 +1,6 @@
+{
+  "name": "B站收藏夹融合随机播放器",
+  "description": "融合多个B站个人歌单/收藏夹进行无缝随机跨歌单播放，完美解决单收藏夹1000个视频的上限限制，并提供倒计时自动切歌、播放数据统计等功能。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
