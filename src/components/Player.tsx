@@ -39,7 +39,13 @@ export default function Player({
 }: PlayerProps) {
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [isTimerActive, setIsTimerActive] = useState<boolean>(true);
+  const [iframeStartAt, setIframeStartAt] = useState<number>(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const onNextRef = useRef(onNext);
+
+  useEffect(() => {
+    onNextRef.current = onNext;
+  }, [onNext]);
 
   // When song changes, reset timer
   useEffect(() => {
@@ -47,6 +53,7 @@ export default function Player({
       // Set timer to song duration + buffer
       setTimeLeft(currentSong.duration + countdownBuffer);
       setIsTimerActive(autoNext); // Follow settings by default
+      setIframeStartAt(0);
       incrementPlayCount(currentSong.bvid);
     } else {
       setTimeLeft(0);
@@ -65,7 +72,7 @@ export default function Player({
           if (prev <= 1) {
             clearInterval(timerRef.current!);
             setTimeout(() => {
-              onNext();
+              onNextRef.current();
             }, 500); // slight buffer for a smoother transition
             return 0;
           }
@@ -77,7 +84,7 @@ export default function Player({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [currentSong, isTimerActive, timeLeft, onNext]);
+  }, [currentSong, isTimerActive]);
 
   // Helper to format seconds to MM:SS
   const formatTime = (secs: number) => {
@@ -99,12 +106,10 @@ export default function Player({
     const danmakuParam = hideDanmaku ? '0' : '1';
     const hqParam = highQuality ? '1' : '0';
     
-    // Calculate elapsed time (how many seconds have played)
-    // timeLeft starts at (duration + buffer) and counts down to 0
-    const elapsed = Math.max(0, Math.floor(totalSeconds - timeLeft));
-    
-    // Only pass t parameter if they have played at least 1 second
-    const timeParam = elapsed > 1 ? `&t=${elapsed}` : '';
+    // Keep this URL stable while the local timer ticks. Changing `t` every
+    // second reloads the cross-origin iframe and makes the audio stutter.
+    // `iframeStartAt` changes only when a paused player is resumed.
+    const timeParam = iframeStartAt > 1 ? `&t=${Math.floor(iframeStartAt)}` : '';
     
     return `https://player.bilibili.com/player.html?bvid=${bvid}&autoplay=1&danmaku=${danmakuParam}&high_quality=${hqParam}&page=1${timeParam}`;
   };
@@ -126,6 +131,16 @@ export default function Player({
   // Calculate percentage for visual timer bar
   const totalSeconds = currentSong.duration + countdownBuffer;
   const progressPercent = totalSeconds > 0 ? Math.round(((totalSeconds - timeLeft) / totalSeconds) * 100) : 0;
+
+  const togglePlayback = () => {
+    if (isTimerActive) {
+      setIsTimerActive(false);
+      return;
+    }
+
+    setIframeStartAt(Math.max(0, totalSeconds - timeLeft));
+    setIsTimerActive(true);
+  };
 
   return (
     <div id="active-player-card" className="bg-[#08080c] border border-white/5 rounded-3xl p-6 shadow-2xl space-y-6">
@@ -346,7 +361,7 @@ export default function Player({
 
           {/* Pause Timer */}
           <button
-            onClick={() => setIsTimerActive(!isTimerActive)}
+            onClick={togglePlayback}
             className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
               isTimerActive
                 ? 'bg-cyan-500/5 border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/15'
