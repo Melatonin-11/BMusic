@@ -67,7 +67,7 @@ export default function Player({
       clearInterval(timerRef.current);
     }
 
-    if (currentSong && isTimerActive && timeLeft > 0) {
+    if (currentSong && isTimerActive) {
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
