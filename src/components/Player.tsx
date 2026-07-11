@@ -41,6 +41,7 @@ export default function Player({
   const [isTimerActive, setIsTimerActive] = useState<boolean>(true);
   const [iframeStartAt, setIframeStartAt] = useState<number>(0);
   const [iframeReloadKey, setIframeReloadKey] = useState<number>(0);
+  const [showResumeBanner, setShowResumeBanner] = useState<boolean>(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const onNextRef = useRef(onNext);
 
@@ -101,19 +102,32 @@ export default function Player({
   }, [currentSong, countdownBuffer]);
 
   // Listen to tab focus/visibility change.
-  // If a song changed while in background and failed iframe autoplay, reload it instantly upon return.
+  // If a song changed while in background, show an overlay to bypass browser autoplay safety with a user gesture.
   useEffect(() => {
+    const handleGestureResume = () => {
+      setIframeReloadKey((prev) => prev + 1);
+      setShowResumeBanner(false);
+      hasHiddenSwitchRef.current = false;
+      document.removeEventListener('click', handleGestureResume);
+      document.removeEventListener('pointerdown', handleGestureResume);
+    };
+
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && hasHiddenSwitchRef.current) {
-        hasHiddenSwitchRef.current = false;
-        // Reload iframe
-        setIframeReloadKey((prev) => prev + 1);
+      if (document.visibilityState === 'visible') {
+        if (hasHiddenSwitchRef.current) {
+          setShowResumeBanner(true);
+          // Register user gesture listeners to instantly play once clicked anywhere
+          document.addEventListener('click', handleGestureResume);
+          document.addEventListener('pointerdown', handleGestureResume);
+        }
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('click', handleGestureResume);
+      document.removeEventListener('pointerdown', handleGestureResume);
     };
   }, []);
 
@@ -208,15 +222,33 @@ export default function Player({
     setIframeReloadKey((prev) => prev + 1);
   };
 
+  const isMini = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mode') === 'mini';
+
   return (
     <div id="active-player-card" className="bg-[#08080c] border border-white/5 rounded-3xl p-6 shadow-2xl space-y-6">
       {/* Player Header with Mode Toggle */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-4">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
           <span className="text-xs font-mono font-bold tracking-widest text-slate-300 uppercase">
             NOW PLAYING / 正在播放
           </span>
+          {!isMini && (
+            <button
+              onClick={() => {
+                window.open(
+                  window.location.origin + '?mode=mini',
+                  'BiliMusicMiniPlayer',
+                  'width=520,height=720,scrollbars=no,resizable=yes'
+                );
+              }}
+              className="flex items-center gap-1 text-[10px] bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 px-2 py-0.5 rounded transition-all cursor-pointer font-bold"
+              title="独立悬浮小窗口播放，100% 解决后台切歌无声音、被挂起和需要点击恢复的问题！"
+            >
+              <ExternalLink className="w-3 h-3" />
+              <span>开启无感后台播放小窗口</span>
+            </button>
+          )}
         </div>
         <div className="flex items-center bg-[#050507] border border-white/5 rounded-xl p-1 relative">
           <button
@@ -246,8 +278,9 @@ export default function Player({
 
       {/* Upper part: Video player iframe or Ambient vinyl CD */}
       <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black border border-white/5 shadow-inner">
-        {/* The iframe is ALWAYS kept in the DOM to prevent reloads/pauses, but conditionally styled as hidden */}
-        <div className={audioOnlyMode ? "absolute pointer-events-none opacity-0 w-1 h-1 -top-10 -left-10" : "w-full h-full"}>
+        {/* The iframe is ALWAYS kept in the DOM. To prevent Chrome from freezing/suspending the iframe in 
+            audio-only mode, we keep it as w-full h-full but low opacity and pointer-events-none beneath the cover. */}
+        <div className={audioOnlyMode ? "absolute inset-0 pointer-events-none opacity-[0.01] z-0" : "w-full h-full relative z-10"}>
           {isTimerActive ? (
             <iframe
               key={`${currentSong.bvid}-${iframeReloadKey}`}
@@ -271,7 +304,7 @@ export default function Player({
 
         {/* Ambient Cover View (Pure Audio Mode) */}
         {audioOnlyMode && isTimerActive && (
-          <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-[#020204]">
+          <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-[#020204] z-10">
             {/* Blurred backdrop cover */}
             <img
               src={currentSong.cover}
@@ -339,6 +372,30 @@ export default function Player({
               <span>已播放时间: <strong className="text-cyan-400">{formatTime(totalSeconds - timeLeft)}</strong></span>
               <span className="w-px h-3 bg-white/10"></span>
               <span>剩余倒计时: <strong className="text-pink-400">{formatTime(timeLeft)}</strong></span>
+            </div>
+          </div>
+        )}
+
+        {/* Background Playback Gesture Overlay */}
+        {showResumeBanner && (
+          <div className="absolute inset-0 bg-[#08080c]/95 backdrop-blur-md z-30 flex flex-col items-center justify-center p-6 text-center animate-pulse">
+            <div className="absolute inset-0 bg-gradient-to-tr from-cyan-950/20 to-pink-950/20 pointer-events-none"></div>
+            <div className="relative w-16 h-16 rounded-full bg-cyan-500/10 flex items-center justify-center mb-4 text-cyan-400 border border-cyan-500/20 shadow-lg shadow-cyan-500/10">
+              <Music className="w-8 h-8 animate-bounce [animation-duration:2s]" />
+            </div>
+            <h4 className="text-xs font-bold text-slate-100 tracking-wider">
+              点击屏幕任意位置恢复声音 / CLICK TO RESUME
+            </h4>
+            <p className="mt-2 text-[11px] text-slate-400 max-w-xs leading-relaxed">
+              由于浏览器媒体播放安全策略，在后台切歌后需要点击一次来恢复声音。轻点网页任意位置即可瞬间启动！
+            </p>
+            {!isMini && (
+              <p className="mt-2 text-[10px] text-cyan-400 max-w-xs font-semibold bg-cyan-500/5 px-2.5 py-1.5 rounded-lg border border-cyan-500/15">
+                💡 提示：点击上方的【开启无感后台播放小窗口】独立窗口听歌，可完美避开浏览器安全限制，挂起状态下亦能连续自动播放！
+              </p>
+            )}
+            <div className="mt-4 px-3 py-1 bg-cyan-500/10 border border-cyan-500/20 text-[10px] text-cyan-400 rounded-full font-mono">
+              BACKGROUND_AUTOPLAY_ACTIVE
             </div>
           </div>
         )}

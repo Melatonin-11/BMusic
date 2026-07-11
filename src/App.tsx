@@ -8,8 +8,17 @@ import { PlaylistConfig, Song, PlaybackHistoryItem } from './types';
 import { Music, FolderHeart, BarChart3, Radio, HelpCircle, AlertCircle, Shuffle } from 'lucide-react';
 
 export default function App() {
+  const [isMiniMode] = useState<boolean>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('mode') === 'mini';
+    } catch {
+      return false;
+    }
+  });
+
   const [activeTab, setActiveTab] = useState<'player' | 'songlist' | 'playlists' | 'stats'>('player');
-  const [showSplash, setShowSplash] = useState<boolean>(true);
+  const [showSplash, setShowSplash] = useState<boolean>(!isMiniMode);
 
   // Core state loaded from LocalStorage
   const [playlists, setPlaylists] = useState<PlaylistConfig[]>(() => {
@@ -105,11 +114,15 @@ export default function App() {
 
   // Hide opening logo splash screen after 2.5 seconds
   useEffect(() => {
+    if (isMiniMode) {
+      setShowSplash(false);
+      return;
+    }
     const timer = setTimeout(() => {
       setShowSplash(false);
     }, 2500);
     return () => clearTimeout(timer);
-  }, []);
+  }, [isMiniMode]);
 
   // Combined active songs pool
   const allActiveSongs = useMemo(() => {
@@ -226,6 +239,35 @@ export default function App() {
   const clearHistory = () => {
     setHistory([]);
   };
+
+  if (isMiniMode) {
+    return (
+      <div id="root-app-container" className="min-h-screen bg-[#030305] text-slate-100 flex flex-col justify-between selection:bg-cyan-500/30 selection:text-cyan-200">
+        <main className="flex-1 max-w-2xl w-full mx-auto p-4 flex flex-col justify-center">
+          <Player
+            currentSong={currentSong}
+            onNext={playNextSong}
+            onPrev={playPrevSong}
+            history={history}
+            autoNext={autoNext}
+            setAutoNext={setAutoNext}
+            countdownBuffer={countdownBuffer}
+            setCountdownBuffer={setCountdownBuffer}
+            hideDanmaku={hideDanmaku}
+            setHideDanmaku={setHideDanmaku}
+            highQuality={highQuality}
+            setHighQuality={setHighQuality}
+            incrementPlayCount={incrementPlayCount}
+            audioOnlyMode={audioOnlyMode}
+            setAudioOnlyMode={setAudioOnlyMode}
+          />
+        </main>
+        <footer className="py-3 text-center text-[10px] text-slate-500 font-mono border-t border-white/5 bg-[#050508]/80 backdrop-blur-sm">
+          <span>BiliMusic Mini-Player Mode · 独立窗口不激活亦可持续顺畅播放</span>
+        </footer>
+      </div>
+    );
+  }
 
   return (
     <div id="root-app-container" className="min-h-screen bg-[#050507] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
