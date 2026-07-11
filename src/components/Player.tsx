@@ -40,6 +40,7 @@ export default function Player({
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [isTimerActive, setIsTimerActive] = useState<boolean>(true);
   const [iframeStartAt, setIframeStartAt] = useState<number>(0);
+  const [iframeReloadKey, setIframeReloadKey] = useState<number>(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const onNextRef = useRef(onNext);
 
@@ -142,6 +143,15 @@ export default function Player({
     setIsTimerActive(true);
   };
 
+  const commitSeek = (elapsed: number) => {
+    const target = Math.max(0, Math.min(currentSong.duration, elapsed));
+    setTimeLeft(Math.max(0, totalSeconds - target));
+    setIframeStartAt(target);
+    // Force exactly one iframe remount, including when seeking to the same
+    // timestamp used by a previous seek.
+    setIframeReloadKey((prev) => prev + 1);
+  };
+
   return (
     <div id="active-player-card" className="bg-[#08080c] border border-white/5 rounded-3xl p-6 shadow-2xl space-y-6">
       {/* Player Header with Mode Toggle */}
@@ -184,6 +194,7 @@ export default function Player({
         <div className={audioOnlyMode ? "absolute pointer-events-none opacity-0 w-1 h-1 -top-10 -left-10" : "w-full h-full"}>
           {isTimerActive ? (
             <iframe
+              key={`${currentSong.bvid}-${iframeReloadKey}`}
               id="bilibili-player-iframe"
               src={getBilibiliEmbedUrl()}
               scrolling="no"
@@ -299,11 +310,13 @@ export default function Player({
               const elapsed = Number(e.target.value);
               setTimeLeft(totalSeconds - elapsed);
             }}
+            onPointerUp={(e) => commitSeek(Number(e.currentTarget.value))}
+            onKeyUp={(e) => commitSeek(Number(e.currentTarget.value))}
             className="w-full h-2 rounded-full appearance-none bg-slate-900 border border-white/10 cursor-pointer focus:outline-none accent-cyan-400 hover:accent-pink-500 transition-all"
             style={{
               background: `linear-gradient(to right, #22d3ee 0%, #ec4899 ${progressPercent}%, #090d16 ${progressPercent}%, #090d16 100%)`
             }}
-            title="拖动或点击以校准倒计时与B站播放器画面的时间进度"
+            title="拖动时预览时间，松开后让B站播放器跳转到对应位置"
           />
         </div>
       </div>
