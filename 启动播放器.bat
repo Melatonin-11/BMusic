@@ -9,32 +9,32 @@ echo ========================================
 echo Project: %CD%
 echo.
 
-where node.exe >nul 2>nul
+node -v >nul 2>&1
 if errorlevel 1 goto no_node
 
-where npm.cmd >nul 2>nul
+call npm -v >nul 2>&1
 if errorlevel 1 goto no_npm
 
 if not exist "package.json" goto no_package
 
-if not exist "node_modules\" (
-    echo [INFO] Installing dependencies...
-    call npm.cmd install
-    if errorlevel 1 goto install_failed
-)
+if exist "node_modules" goto skip_install
+echo [INFO] Installing dependencies...
+call npm install
+if errorlevel 1 goto install_failed
+:skip_install
 
-if not exist "dist\server.cjs" (
-    echo [INFO] Building application...
-    call npm.cmd run build
-    if errorlevel 1 goto build_failed
-)
+if exist "dist\server.cjs" goto skip_build
+echo [INFO] Building application...
+call npm run build
+if errorlevel 1 goto build_failed
+:skip_build
 
 echo [INFO] Starting application...
 echo [INFO] URL: http://localhost:3000
 echo [INFO] Keep this window open. Press Ctrl+C to stop.
 echo.
 
-start "" /b powershell.exe -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 2; Start-Process 'http://localhost:3000'"
+start "" cmd /c "ping 127.0.0.1 -n 3 >nul && start http://localhost:3000"
 node "dist\server.cjs"
 if errorlevel 1 goto start_failed
 
@@ -49,7 +49,7 @@ echo Install Node.js LTS from: https://nodejs.org/
 goto failed
 
 :no_npm
-echo [ERROR] npm.cmd was not found. Reinstall Node.js.
+echo [ERROR] npm was not found. Reinstall Node.js.
 goto failed
 
 :no_package
