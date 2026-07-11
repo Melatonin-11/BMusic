@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PlaylistConfig, Song } from '../types';
-import { Play, RotateCw, Trash2, ShieldAlert, Key, HelpCircle, FolderHeart, Plus, CheckCircle2, AlertCircle, Eye, EyeOff, Copy, Check } from 'lucide-react';
+import { Play, RotateCw, Trash2, ShieldAlert, Key, HelpCircle, FolderHeart, Plus, CheckCircle2, AlertCircle, Eye, EyeOff, Copy, Check, Edit2, X } from 'lucide-react';
 
 interface PlaylistConfigProps {
   playlists: PlaylistConfig[];
@@ -35,6 +35,10 @@ export default function PlaylistConfigComponent({
   const [isCopied, setIsCopied] = useState(false);
   const [importText, setImportText] = useState('');
   const [importStatus, setImportStatus] = useState<{ status: 'idle' | 'success' | 'error'; msg?: string }>({ status: 'idle' });
+
+  // Rename states
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState<string>('');
 
   // Generate backup code automatically when playlists change (super compact base-36)
   const currentBackupCode = useMemo(() => {
@@ -214,6 +218,28 @@ export default function PlaylistConfigComponent({
     setConfirmDeleteId(null);
   };
 
+  const handleRename = (id: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    
+    setPlaylists(
+      playlists.map((p) => {
+        if (p.id === id) {
+          return {
+            ...p,
+            name: trimmed,
+            songs: p.songs.map((song) => ({
+              ...song,
+              playlistName: trimmed,
+            })),
+          };
+        }
+        return p;
+      })
+    );
+    setEditingId(null);
+  };
+
   // Safe paginated batch loader to prevent B站 API rate limiting
   const syncPlaylist = async (playlistId: string) => {
     setLoadingStates((prev) => ({
@@ -361,13 +387,17 @@ export default function PlaylistConfigComponent({
     setPlaylists(
       playlists.map((p) => {
         if (p.id === id) {
+          const finalName = p.name.startsWith('未命名') ? name : p.name;
           return {
             ...p,
-            name: p.name.startsWith('未命名') ? name : p.name,
+            name: finalName,
             cover: cover || p.cover,
             videoCount: count,
             isLoaded: true,
-            songs,
+            songs: songs.map((s) => ({
+              ...s,
+              playlistName: finalName,
+            })),
           };
         }
         return p;
@@ -566,9 +596,55 @@ export default function PlaylistConfigComponent({
                         </span>
                       )}
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="font-bold text-slate-200 text-sm truncate">{playlist.name}</h4>
+                        {editingId === playlist.id ? (
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              handleRename(playlist.id, editingName);
+                            }}
+                            className="flex items-center gap-1 bg-[#08080c] border border-cyan-500/30 rounded-lg px-2 py-1 max-w-full"
+                          >
+                            <input
+                              type="text"
+                              value={editingName}
+                              onChange={(e) => setEditingName(e.target.value)}
+                              className="bg-transparent text-slate-100 text-xs font-bold outline-none border-none py-0 px-1 w-32 sm:w-48 text-left"
+                              autoFocus
+                              maxLength={40}
+                            />
+                            <button
+                              type="submit"
+                              className="p-1 text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
+                              title="保存"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingId(null)}
+                              className="p-1 text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
+                              title="取消"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </form>
+                        ) : (
+                          <div className="flex items-center gap-2 group max-w-full">
+                            <h4 className="font-bold text-slate-200 text-sm truncate">{playlist.name}</h4>
+                            <button
+                              onClick={() => {
+                                setEditingId(playlist.id);
+                                setEditingName(playlist.name);
+                              }}
+                              className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 text-slate-400 hover:text-cyan-400 rounded transition-all duration-250 cursor-pointer flex items-center justify-center"
+                              title="重命名"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
                         <span className="text-[9px] bg-white/5 border border-white/5 text-slate-400 px-1.5 py-0.5 rounded font-mono">
                           ID: {playlist.id}
                         </span>
