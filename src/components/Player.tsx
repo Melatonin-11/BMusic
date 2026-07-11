@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Song, PlaybackHistoryItem } from '../types';
-import { Play, Pause, SkipForward, SkipBack, ExternalLink, RefreshCw, Volume2, Clock, Hourglass, Plus, Minus, Info, Music, Tv } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, ExternalLink, RefreshCw, Volume2, Clock, Hourglass, Plus, Minus, Info, Music, Tv, HelpCircle } from 'lucide-react';
 
 interface PlayerProps {
   currentSong: Song | null;
@@ -44,9 +44,42 @@ export default function Player({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const onNextRef = useRef(onNext);
 
+  // Background state keepers
+  const silentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const hasHiddenSwitchRef = useRef<boolean>(false);
+
   useEffect(() => {
     onNextRef.current = onNext;
   }, [onNext]);
+
+  // Keep a tiny looping silent audio stream playing when active.
+  // This registers the tab as "actively playing media" in Chrome/Safari/Firefox,
+  // preventing the browser from putting the tab into deep sleep or heavily throttling timers in the background.
+  useEffect(() => {
+    if (isTimerActive && currentSong) {
+      if (!silentAudioRef.current) {
+        // Simple 1-second completely silent WAV file encoded in base64
+        const silentUri = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAAA";
+        const audio = new Audio(silentUri);
+        audio.loop = true;
+        audio.volume = 0.001; // extremely low to prevent any hardware hiss
+        silentAudioRef.current = audio;
+      }
+      silentAudioRef.current.play().catch((err) => {
+        console.log("Background audio loop start allowed on user interaction:", err);
+      });
+    } else {
+      if (silentAudioRef.current) {
+        silentAudioRef.current.pause();
+      }
+    }
+
+    return () => {
+      if (silentAudioRef.current) {
+        silentAudioRef.current.pause();
+      }
+    };
+  }, [isTimerActive, currentSong]);
 
   // When song changes, reset timer
   useEffect(() => {
@@ -56,10 +89,33 @@ export default function Player({
       setIsTimerActive(autoNext); // Follow settings by default
       setIframeStartAt(0);
       incrementPlayCount(currentSong.bvid);
+
+      // If the song changed while the browser tab was hidden/backgrounded,
+      // flag it so we reload the iframe to force autoplay the moment the user brings it to foreground
+      if (document.hidden) {
+        hasHiddenSwitchRef.current = true;
+      }
     } else {
       setTimeLeft(0);
     }
   }, [currentSong, countdownBuffer]);
+
+  // Listen to tab focus/visibility change.
+  // If a song changed while in background and failed iframe autoplay, reload it instantly upon return.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && hasHiddenSwitchRef.current) {
+        hasHiddenSwitchRef.current = false;
+        // Reload iframe
+        setIframeReloadKey((prev) => prev + 1);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
 
   // Handle countdown logic
   useEffect(() => {
@@ -476,6 +532,33 @@ export default function Player({
             <span className="text-slate-500 scale-90" title="防止视频缓冲导致视频未播完即切歌">
               <Info className="w-3.5 h-3.5 inline text-cyan-400" />
             </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Background Playback Notice / Guide */}
+      <div className="border-t border-white/5 pt-4">
+        <div className="bg-cyan-950/10 border border-cyan-500/15 rounded-2xl p-4 flex gap-3 items-start">
+          <HelpCircle className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1 text-xs">
+            <h4 className="font-bold text-slate-200 flex items-center gap-1">
+              <span>💡 浏览器后台完美播放/切歌技巧</span>
+              <span className="text-[10px] bg-cyan-500/20 text-cyan-300 font-mono px-1.5 py-0.5 rounded uppercase">Recommended / 推荐</span>
+            </h4>
+            <p className="text-slate-400 leading-relaxed">
+              现代浏览器（如 Chrome, Edge, Safari）有严格的媒体安全策略：当网页在后台（切到其他标签页或最小化）时，会禁止新加载的 B 站播放器自动播放声音，从而导致切歌时卡住。
+            </p>
+            <div className="pt-1.5 text-slate-300 flex flex-col gap-1">
+              <p className="font-semibold text-cyan-450">
+                只需简单一步即可彻底解决后台自动连续播放：
+              </p>
+              <div className="pl-4 border-l border-cyan-500/30 space-y-1 font-mono text-slate-300 text-[11px]">
+                <div>1. 点击浏览器地址栏左侧的 <strong className="text-cyan-400">“锁头 / 调节”</strong> 图标；</div>
+                <div>2. 点击 <strong className="text-cyan-400">“网站设置 (Site Settings)”</strong>；</div>
+                <div>3. 找到 <strong className="text-cyan-400">“声音 (Sound)”</strong> 权限，将其修改为 <strong className="text-cyan-400">“允许 (Allow)”</strong>；</div>
+                <div>4. 返回此页面刷新即可。即使切换标签或最小化，系统也能完美连续播歌！</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
