@@ -34,6 +34,7 @@ jobs:
         run: npm ci
 
       - name: Build Frontend and Compile Tauri Executable
+        id: tauri_build
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -44,3 +45,18 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Package and Upload Portable Version
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ steps.tauri_build.outputs.appVersion }}"
+          $portableDir = "portable\BiliRandomizer-$version"
+          $portableExe = "$portableDir\BiliRandomizer.exe"
+          $zipFile = "BiliRandomizer_${version}_Windows_x64_Portable.zip"
+
+          New-Item -ItemType Directory -Path $portableDir -Force | Out-Null
+          Copy-Item "src-tauri\target\release\bili-randomizer.exe" $portableExe
+          Compress-Archive -Path "$portableDir\*" -DestinationPath $zipFile -Force
+          gh release upload "v$version" $zipFile --clobber
