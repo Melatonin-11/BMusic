@@ -28,11 +28,26 @@ jobs:
           tagName: v__VERSION__
           releaseName: BiliRandomizer v__VERSION__
           releaseBody: |
-            BiliRandomizer Windows 桌面版。
+            ## BiliRandomizer Windows 桌面版
 
-            - 多收藏夹融合随机播放
-            - 迷你 CD 窗口和窗口置顶
+            将多个 Bilibili 收藏夹合并为一个曲库，在桌面上轻松随机听歌。
+
+            ### 主要功能
+
+            - 支持多个收藏夹同步，并可自由选择哪些收藏夹加入当前融合曲库
+            - 提供全曲库随机和收藏夹均衡随机两种模式
+            - 支持自动切歌、播放历史、曲库统计和自定义收藏夹名称
+            - 极简 CD 悬浮窗：收起主界面，只在桌面保留旋转唱片
+            - 收藏夹配置备份与恢复，可保留自定义名称和启用状态
             - SESSDATA 使用 Windows 凭据管理器保存
+
+            ### 下载说明
+
+            - `BiliRandomizer_*_x64-setup.exe`：Windows 安装程序
+            - `BiliRandomizer_*_x64_*.msi`：Windows MSI 安装包
+            - `BiliRandomizer_*_Windows_x64_Portable.zip`：免安装便携版
+
+            下载下方 Assets 中适合自己的版本即可。首次使用时，请添加收藏夹并同步数据。
           releaseDraft: false
           prerelease: false
       - name: Package portable version

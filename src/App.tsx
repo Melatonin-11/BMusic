@@ -265,14 +265,7 @@ export default function App() {
             await getCurrentWindow().toggleMaximize();
           }}
         >
-          <div data-tauri-drag-region className="flex items-center gap-2.5 pl-3 min-w-0">
-            <div data-tauri-drag-region className="w-6 h-6 rounded-lg bg-gradient-to-tr from-cyan-500 to-pink-500 flex items-center justify-center shadow-md">
-              <Radio className="w-3.5 h-3.5 text-slate-950" />
-            </div>
-            <span data-tauri-drag-region className="text-[11px] font-mono font-bold tracking-wider text-slate-300 truncate">
-              BiliRandomizer · B站收藏夹融合随机播放器
-            </span>
-          </div>
+          <div data-tauri-drag-region className="h-full flex-1" />
           <div className="h-full flex items-stretch">
             <button
               onClick={async () => {
