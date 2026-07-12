@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import PlaylistConfigComponent from './components/PlaylistConfig';
 import Player from './components/Player';
@@ -6,11 +6,13 @@ import SongList from './components/SongList';
 import StatsDashboard from './components/StatsDashboard';
 import { PlaylistConfig, Song, PlaybackHistoryItem } from './types';
 import { Music, FolderHeart, BarChart3, Radio, HelpCircle, AlertCircle, Shuffle } from 'lucide-react';
+import { pickNextSong } from './utils/playback';
 
 export default function App() {
   const [isMiniCDMode, setIsMiniCDMode] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'player' | 'songlist' | 'playlists' | 'stats'>('player');
   const [showSplash, setShowSplash] = useState<boolean>(true);
+  const normalWindowRef = useRef<{ size: { width: number; height: number }; position: { x: number; y: number } } | null>(null);
 
   // Core state loaded from LocalStorage
   const [playlists, setPlaylists] = useState<PlaylistConfig[]>(() => {
@@ -18,9 +20,8 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
-  const [sessdata, setSessdata] = useState<string>(() => {
-    return localStorage.getItem('bili_sessdata') || '';
-  });
+  // SESSDATA is only a short-lived input value. Rust stores it in Windows Credential Manager.
+  const [sessdata, setSessdata] = useState<string>('');
 
   const [history, setHistory] = useState<PlaybackHistoryItem[]>(() => {
     const saved = localStorage.getItem('bili_player_history');
@@ -65,12 +66,13 @@ export default function App() {
 
   // Save states to LocalStorage
   useEffect(() => {
-    localStorage.setItem('bili_playlists', JSON.stringify(playlists));
-  }, [playlists]);
+    // Remove credentials left by older versions; credentials now live in Windows Credential Manager.
+    localStorage.removeItem('bili_sessdata');
+  }, []);
 
   useEffect(() => {
-    localStorage.setItem('bili_sessdata', sessdata);
-  }, [sessdata]);
+    localStorage.setItem('bili_playlists', JSON.stringify(playlists));
+  }, [playlists]);
 
   useEffect(() => {
     localStorage.setItem('bili_player_history', JSON.stringify(history));
@@ -111,6 +113,49 @@ export default function App() {
     }
   }, [isMiniCDMode]);
 
+  // Mini mode is a real desktop-pet window: transparent, frameless and CD-sized.
+  useEffect(() => {
+    if (!(window as any).__TAURI_INTERNALS__) return;
+
+    let cancelled = false;
+    const updateWindow = async () => {
+      const { getCurrentWindow, LogicalPosition, LogicalSize } = await import('@tauri-apps/api/window');
+      const appWindow = getCurrentWindow();
+      if (isMiniCDMode) {
+        const [size, position, scaleFactor] = await Promise.all([
+          appWindow.outerSize(),
+          appWindow.outerPosition(),
+          appWindow.scaleFactor(),
+        ]);
+        if (cancelled) return;
+        normalWindowRef.current = {
+          size: { width: size.width / scaleFactor, height: size.height / scaleFactor },
+          position: { x: position.x / scaleFactor, y: position.y / scaleFactor },
+        };
+        const miniSize = 230;
+        const centerX = position.x / scaleFactor + size.width / scaleFactor / 2;
+        const centerY = position.y / scaleFactor + size.height / scaleFactor / 2;
+        await appWindow.setDecorations(false);
+        await appWindow.setShadow(false);
+        await appWindow.setResizable(false);
+        await appWindow.setSize(new LogicalSize(miniSize, miniSize));
+        await appWindow.setPosition(new LogicalPosition(centerX - miniSize / 2, centerY - miniSize / 2));
+        await appWindow.setAlwaysOnTop(true);
+      } else if (normalWindowRef.current) {
+        const normal = normalWindowRef.current;
+        await appWindow.setDecorations(true);
+        await appWindow.setShadow(true);
+        await appWindow.setResizable(true);
+        await appWindow.setSize(new LogicalSize(normal.size.width, normal.size.height));
+        await appWindow.setPosition(new LogicalPosition(normal.position.x, normal.position.y));
+        await appWindow.setAlwaysOnTop(false);
+        normalWindowRef.current = null;
+      }
+    };
+    updateWindow().catch((error) => console.error('Failed to switch window mode:', error));
+    return () => { cancelled = true; };
+  }, [isMiniCDMode]);
+
 
 
   // Hide opening logo splash screen after 2.5 seconds
@@ -133,12 +178,12 @@ export default function App() {
   }, [playlists]);
 
   // Track uploader play counts or local counts
-  const incrementPlayCount = (bvid: string) => {
+  const incrementPlayCount = (songToCount: Song) => {
     setPlaylists((prev) =>
       prev.map((pl) => ({
         ...pl,
         songs: pl.songs.map((song) => {
-          if (song.bvid === bvid) {
+          if (pl.id === songToCount.playlistId && song.bvid === songToCount.bvid) {
             return { ...song, playCount: (song.playCount || 0) + 1 };
           }
           return song;
@@ -150,6 +195,7 @@ export default function App() {
   // Play a specific song
   const handlePlaySong = (song: Song) => {
     setCurrentSong(song);
+    incrementPlayCount(song);
     
     // Add to History
     const historyItem: PlaybackHistoryItem = {
@@ -176,38 +222,7 @@ export default function App() {
 
   // Core random playback logic: Random cross-playlist switching
   const playNextSong = () => {
-    if (allActiveSongs.length === 0) {
-      return;
-    }
-
-    if (allActiveSongs.length === 1) {
-      handlePlaySong(allActiveSongs[0]);
-      return;
-    }
-
-    let nextSong: Song | null = null;
-
-    if (shuffleMode === 'pure' || playlists.filter(p => p.isLoaded && p.songs.length > 0).length <= 1) {
-      // Pure Random Mode
-      let attempts = 0;
-      do {
-        const randomIndex = Math.floor(Math.random() * allActiveSongs.length);
-        nextSong = allActiveSongs[randomIndex];
-        attempts++;
-      } while (nextSong.bvid === currentSong?.bvid && attempts < 15);
-    } else {
-      // Balanced Random Mode: First pick a random loaded playlist, then pick a random song inside it.
-      // This ensures folder-level balancing (prevents folders with 990 songs from totally overwhelming folders with 50 songs)
-      const activePlaylists = playlists.filter((p) => p.isLoaded && p.songs.length > 0);
-      let attempts = 0;
-      do {
-        const randomPl = activePlaylists[Math.floor(Math.random() * activePlaylists.length)];
-        const randomSong = randomPl.songs[Math.floor(Math.random() * randomPl.songs.length)];
-        nextSong = randomSong;
-        attempts++;
-      } while (nextSong.bvid === currentSong?.bvid && attempts < 15);
-    }
-
+    const nextSong = pickNextSong(playlists, currentSong?.bvid, shuffleMode);
     if (nextSong) {
       handlePlaySong(nextSong);
     }
@@ -219,17 +234,14 @@ export default function App() {
 
     // The first item in history is the currently playing song
     // We want to find the second item and play it
-    const previousBvid = history[1]?.bvid;
-    const song = allActiveSongs.find((s) => s.bvid === previousBvid);
+    const previous = history.find((item) => item.bvid !== currentSong?.bvid);
+    const song = previous
+      ? allActiveSongs.find((s) => s.bvid === previous.bvid && s.playlistName === previous.playlistName)
+        || allActiveSongs.find((s) => s.bvid === previous.bvid)
+      : undefined;
     
     if (song) {
-      // Remove current song from history top to avoid duplicate pushing
-      setHistory((prev) => prev.slice(1));
-      setCurrentSong(song);
-      incrementPlayCount(song.bvid);
-    } else {
-      // If song is not loaded anymore, skip it
-      setHistory((prev) => prev.slice(1));
+      handlePlaySong(song);
     }
   };
 
@@ -238,7 +250,9 @@ export default function App() {
   };
 
   return (
-    <div id="root-app-container" className="min-h-screen bg-[#050507] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
+    <div id="root-app-container" className={isMiniCDMode
+      ? "w-screen h-screen bg-transparent text-slate-100 overflow-hidden select-none"
+      : "min-h-screen bg-[#050507] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200"}>
       
       {/* Opening Logo Splash screen */}
       <AnimatePresence>
@@ -379,7 +393,7 @@ export default function App() {
       )}
 
       {/* Main Content Area */}
-      <main id="app-main-content" className={isMiniCDMode ? "flex-1 flex flex-col justify-center items-center p-4 relative" : "flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 relative"}>
+      <main id="app-main-content" className={isMiniCDMode ? "w-screen h-screen flex items-center justify-center bg-transparent overflow-hidden" : "flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 relative"}>
         
         {/* Quick reminder when no folders are loaded */}
         {playlists.length === 0 && activeTab !== 'playlists' && (
@@ -401,10 +415,10 @@ export default function App() {
         )}
 
         {/* Tab display views: Player View container */}
-        <div className={isMiniCDMode ? "w-full max-w-sm flex justify-center animate-in fade-in zoom-in duration-300" : (activeTab === 'player' ? "grid grid-cols-1 lg:grid-cols-12 gap-8 items-start" : "hidden")}>
+        <div className={isMiniCDMode ? "w-full h-full flex items-center justify-center" : (activeTab === 'player' ? "grid grid-cols-1 lg:grid-cols-12 gap-8 items-start" : "hidden")}>
           
           {/* Embedded Active Player */}
-          <div className={isMiniCDMode ? "w-full" : "lg:col-span-8"}>
+          <div className={isMiniCDMode ? "w-full h-full" : "lg:col-span-8"}>
             <Player
               currentSong={currentSong}
               onNext={playNextSong}
@@ -418,7 +432,6 @@ export default function App() {
               setHideDanmaku={setHideDanmaku}
               highQuality={highQuality}
               setHighQuality={setHighQuality}
-              incrementPlayCount={incrementPlayCount}
               audioOnlyMode={audioOnlyMode}
               setAudioOnlyMode={setAudioOnlyMode}
               isMiniCDMode={isMiniCDMode}
@@ -523,7 +536,7 @@ export default function App() {
       </main>
 
       {/* Footer bar */}
-      <footer id="app-footer" className="bg-[#0a0a0f] border-t border-white/5 py-6 text-center text-xs text-slate-500 font-mono">
+      <footer id="app-footer" className={isMiniCDMode ? "hidden" : "bg-[#0a0a0f] border-t border-white/5 py-6 text-center text-xs text-slate-500 font-mono"}>
         <p>© 2026 B站收藏夹融合随机播放器. All media streams processed locally. Designed with Immersive UI.</p>
       </footer>
     </div>

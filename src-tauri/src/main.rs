@@ -3,6 +3,46 @@
 
 use reqwest::header::{COOKIE, REFERER, USER_AGENT};
 
+const CREDENTIAL_SERVICE: &str = "com.bili.randomizer";
+const CREDENTIAL_USER: &str = "bilibili-sessdata";
+
+fn credential_entry() -> Result<keyring::Entry, String> {
+    keyring::Entry::new(CREDENTIAL_SERVICE, CREDENTIAL_USER)
+        .map_err(|error| format!("无法访问 Windows 凭据管理器: {error}"))
+}
+
+fn load_sessdata() -> Result<String, String> {
+    match credential_entry()?.get_password() {
+        Ok(value) => Ok(value),
+        Err(keyring::Error::NoEntry) => Ok(String::new()),
+        Err(error) => Err(format!("读取登录凭据失败: {error}")),
+    }
+}
+
+#[tauri::command]
+fn credential_has_sessdata() -> Result<bool, String> {
+    Ok(!load_sessdata()?.is_empty())
+}
+
+#[tauri::command]
+fn credential_save_sessdata(sessdata: String) -> Result<(), String> {
+    let value = sessdata.trim();
+    if value.is_empty() {
+        return credential_delete_sessdata();
+    }
+    credential_entry()?
+        .set_password(value)
+        .map_err(|error| format!("保存登录凭据失败: {error}"))
+}
+
+#[tauri::command]
+fn credential_delete_sessdata() -> Result<(), String> {
+    match credential_entry()?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(error) => Err(format!("删除登录凭据失败: {error}")),
+    }
+}
+
 fn bilibili_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .build()
@@ -54,7 +94,8 @@ async fn send_bilibili_request(
 }
 
 #[tauri::command]
-async fn bilibili_nav(sessdata: String) -> Result<serde_json::Value, String> {
+async fn bilibili_nav() -> Result<serde_json::Value, String> {
+    let sessdata = load_sessdata()?;
     let client = bilibili_client()?;
     let request = client.get("https://api.bilibili.com/x/web-interface/nav");
     send_bilibili_request(add_bilibili_headers(request, &sessdata)).await
@@ -65,12 +106,12 @@ async fn bilibili_playlist(
     media_id: String,
     pn: u32,
     ps: u32,
-    sessdata: String,
 ) -> Result<serde_json::Value, String> {
     if media_id.trim().is_empty() {
         return Err("Missing media_id parameter".to_string());
     }
 
+    let sessdata = load_sessdata()?;
     let client = bilibili_client()?;
     let pn_string = pn.to_string();
     let ps_string = ps.to_string();
@@ -88,7 +129,13 @@ async fn bilibili_playlist(
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![bilibili_nav, bilibili_playlist])
+        .invoke_handler(tauri::generate_handler![
+            bilibili_nav,
+            bilibili_playlist,
+            credential_has_sessdata,
+            credential_save_sessdata,
+            credential_delete_sessdata
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

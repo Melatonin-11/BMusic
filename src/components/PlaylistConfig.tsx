@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { PlaylistConfig, Song } from '../types';
 import { Play, RotateCw, Trash2, ShieldAlert, Key, HelpCircle, FolderHeart, Plus, CheckCircle2, AlertCircle, Eye, EyeOff, Copy, Check, Edit2, X } from 'lucide-react';
+import { parsePlaylistIds } from '../utils/playlistImport';
+import { remainingPageBatches } from '../utils/pagination';
 
 interface PlaylistConfigProps {
   playlists: PlaylistConfig[];
@@ -10,41 +12,14 @@ interface PlaylistConfigProps {
   setSessdata: (sessdata: string) => void;
 }
 
-const isTauriRuntime = () => Boolean((window as any).__TAURI_INTERNALS__);
-
-const fetchBilibiliNav = async (sessdata: string) => {
-  if (isTauriRuntime()) {
-    return invoke<any>('bilibili_nav', { sessdata });
-  }
-
-  const response = await fetch('/api/bilibili/nav', {
-    headers: { 'x-sessdata': sessdata },
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json();
-};
+const fetchBilibiliNav = () => invoke<any>('bilibili_nav');
 
 const fetchBilibiliPlaylist = async (
   mediaId: string,
   page: number,
-  pageSize: number,
-  sessdata: string
+  pageSize: number
 ) => {
-  if (isTauriRuntime()) {
-    return invoke<any>('bilibili_playlist', {
-      mediaId,
-      pn: page,
-      ps: pageSize,
-      sessdata,
-    });
-  }
-
-  const response = await fetch(
-    `/api/bilibili/playlist?media_id=${encodeURIComponent(mediaId)}&pn=${page}&ps=${pageSize}`,
-    { headers: { 'x-sessdata': sessdata } }
-  );
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json();
+  return invoke<any>('bilibili_playlist', { mediaId, pn: page, ps: pageSize });
 };
 
 export default function PlaylistConfigComponent({
@@ -65,6 +40,7 @@ export default function PlaylistConfigComponent({
   }>>({});
   const [userProfile, setUserProfile] = useState<{ uname?: string; face?: string; isLogin?: boolean } | null>(null);
   const [verifyingCookie, setVerifyingCookie] = useState(false);
+  const [hasSavedCredential, setHasSavedCredential] = useState(false);
   const [showSessdata, setShowSessdata] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
@@ -109,46 +85,7 @@ export default function PlaylistConfigComponent({
       return;
     }
     try {
-      let importedIds: string[] = [];
-
-      // Format 1: Legacy full Base64 JSON
-      if (code.length > 25 && (code.includes('W3') || code.includes('ey') || code.startsWith('Y'))) {
-        try {
-          const jsonStr = decodeURIComponent(atob(code));
-          const parsed = JSON.parse(jsonStr);
-          if (Array.isArray(parsed)) {
-            importedIds = parsed.map(p => String(p.id));
-          }
-        } catch (e) {
-          // ignore, try parsing other formats
-        }
-      }
-
-      // Format 2: Base36 compact code or pure numeric IDs
-      if (importedIds.length === 0) {
-        // split by hyphens, dots, commas, semicolons, or spaces
-        const parts = code.split(/[\s,.;\-]+/);
-        const resolved = parts
-          .map(part => {
-            const trimmed = part.trim();
-            if (!trimmed) return null;
-            // If it's already a clean decimal integer (like 346165557)
-            if (/^\d+$/.test(trimmed)) {
-              return trimmed;
-            }
-            // Otherwise, parse as Base36
-            const parsedNum = parseInt(trimmed, 36);
-            if (!isNaN(parsedNum) && parsedNum > 0) {
-              return String(parsedNum);
-            }
-            return null;
-          })
-          .filter((x): x is string => x !== null);
-        
-        if (resolved.length > 0) {
-          importedIds = resolved;
-        }
-      }
+      const importedIds = parsePlaylistIds(code);
 
       if (importedIds.length > 0) {
         // Create new playlist configs for the imported IDs
@@ -186,14 +123,10 @@ export default function PlaylistConfigComponent({
   };
 
   // Verify Bilibili cookie
-  const verifyCookie = async (token: string) => {
-    if (!token) {
-      setUserProfile(null);
-      return;
-    }
+  const verifyCookie = async () => {
     setVerifyingCookie(true);
     try {
-      const data = await fetchBilibiliNav(token);
+      const data = await fetchBilibiliNav();
       if (data.code === 0 && data.data?.isLogin) {
         setUserProfile({
           uname: data.data.uname,
@@ -212,12 +145,27 @@ export default function PlaylistConfigComponent({
   };
 
   useEffect(() => {
-    if (sessdata) {
-      verifyCookie(sessdata);
-    } else {
-      setUserProfile(null);
+    invoke<boolean>('credential_has_sessdata').then((hasCredential) => {
+      setHasSavedCredential(hasCredential);
+      if (hasCredential) verifyCookie();
+    }).catch(console.error);
+  }, []);
+
+  const saveCredential = async () => {
+    if (sessdata.trim()) {
+      await invoke('credential_save_sessdata', { sessdata: sessdata.trim() });
+      setHasSavedCredential(true);
+      await verifyCookie();
+      setSessdata('');
     }
-  }, [sessdata]);
+  };
+
+  const deleteCredential = async () => {
+    await invoke('credential_delete_sessdata');
+    setSessdata('');
+    setHasSavedCredential(false);
+    setUserProfile(null);
+  };
 
   const addPlaylist = (e: React.FormEvent) => {
     e.preventDefault();
@@ -284,7 +232,7 @@ export default function PlaylistConfigComponent({
 
     try {
       // Step 1: Fetch Page 1 to see total count and verify folder name
-      const firstPageData = await fetchBilibiliPlaylist(playlistId, 1, 20, sessdata);
+      const firstPageData = await fetchBilibiliPlaylist(playlistId, 1, 20);
 
       if (firstPageData.code !== 0) {
         throw new Error(firstPageData.message || `API错误代码: ${firstPageData.code}`);
@@ -337,7 +285,7 @@ export default function PlaylistConfigComponent({
       const delayMs = 300; // 300ms gap between batches to prevent B站 IP blocks
 
       const fetchPage = async (page: number): Promise<Song[]> => {
-        const data = await fetchBilibiliPlaylist(playlistId, page, pageSize, sessdata);
+        const data = await fetchBilibiliPlaylist(playlistId, page, pageSize);
         if (data.code !== 0) {
           throw new Error(`获取第 ${page} 页失败: ${data.message || '未知API错误'}`);
         }
@@ -359,11 +307,10 @@ export default function PlaylistConfigComponent({
       };
 
       // Execute pages in concurrent batches
-      for (let p = 2; p <= totalPages; p += concurrencyLimit) {
-        const batchPages = Array.from({ length: Math.min(concurrencyLimit, totalPages - p + 1) }, (_, i) => p + i);
+      for (const batchPages of remainingPageBatches(totalVideos, pageSize, concurrencyLimit)) {
         
         // Wait between batches
-        if (p > 2) {
+        if (batchPages[0] > 2) {
           await new Promise((resolve) => setTimeout(resolve, delayMs));
         }
 
@@ -417,6 +364,7 @@ export default function PlaylistConfigComponent({
       playlists.map((p) => {
         if (p.id === id) {
           const finalName = p.name.startsWith('未命名') ? name : p.name;
+          const previousCounts = new Map(p.songs.map((song) => [song.bvid, song.playCount || 0]));
           return {
             ...p,
             name: finalName,
@@ -426,6 +374,7 @@ export default function PlaylistConfigComponent({
             songs: songs.map((s) => ({
               ...s,
               playlistName: finalName,
+              playCount: previousCounts.get(s.bvid) || 0,
             })),
           };
         }
@@ -484,6 +433,8 @@ export default function PlaylistConfigComponent({
               placeholder="请输入 SESSDATA 字符串"
               value={sessdata}
               onChange={(e) => setSessdata(e.target.value)}
+              onBlur={() => void saveCredential()}
+              onKeyDown={(e) => { if (e.key === 'Enter') void saveCredential(); }}
               className="w-full pl-10 pr-10 py-2 bg-[#050507] border border-white/5 rounded-xl text-slate-200 text-xs focus:outline-none focus:border-cyan-400/50 transition-colors"
             />
             <Key className="absolute left-3.5 top-2.5 w-4 h-4 text-slate-550" />
@@ -532,6 +483,15 @@ export default function PlaylistConfigComponent({
               </span>
             )}
           </div>
+          {hasSavedCredential && (
+            <button
+              type="button"
+              onClick={() => void deleteCredential()}
+              className="text-[10px] text-rose-400 hover:text-rose-300 whitespace-nowrap cursor-pointer"
+            >
+              清除凭据
+            </button>
+          )}
         </div>
       </div>
 

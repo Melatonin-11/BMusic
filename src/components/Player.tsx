@@ -15,7 +15,6 @@ interface PlayerProps {
   setHideDanmaku: (val: boolean) => void;
   highQuality: boolean;
   setHighQuality: (val: boolean) => void;
-  incrementPlayCount: (bvid: string) => void;
   audioOnlyMode: boolean;
   setAudioOnlyMode: (val: boolean) => void;
   isMiniCDMode?: boolean;
@@ -35,7 +34,6 @@ export default function Player({
   setHideDanmaku,
   highQuality,
   setHighQuality,
-  incrementPlayCount,
   audioOnlyMode,
   setAudioOnlyMode,
   isMiniCDMode,
@@ -72,40 +70,16 @@ export default function Player({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const onNextRef = useRef(onNext);
 
-  // Draggable state for Mini CD Mode
-  const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
-  const isDraggingRef = useRef(false);
-  const startPosRef = useRef({ x: 0, y: 0 });
-
-  const handlePointerDown = (e: React.PointerEvent) => {
+  const handlePointerDown = async (e: React.PointerEvent) => {
     if (!isMiniCDMode) return;
     if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('a')) return;
-    isDraggingRef.current = true;
-    startPosRef.current = { x: e.clientX - dragPos.x, y: e.clientY - dragPos.y };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  };
-
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (!isDraggingRef.current) return;
-    const newX = e.clientX - startPosRef.current.x;
-    const newY = e.clientY - startPosRef.current.y;
-    setDragPos({ x: newX, y: newY });
-  };
-
-  const handlePointerUp = (e: React.PointerEvent) => {
-    isDraggingRef.current = false;
     try {
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch (err) {
-      // Ignored
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      await getCurrentWindow().startDragging();
+    } catch (error) {
+      console.error('Failed to drag mini window:', error);
     }
   };
-
-  useEffect(() => {
-    if (!isMiniCDMode) {
-      setDragPos({ x: 0, y: 0 });
-    }
-  }, [isMiniCDMode]);
 
   // Background state keepers
   const silentAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -151,8 +125,6 @@ export default function Player({
       setTimeLeft(currentSong.duration + countdownBuffer);
       setIsTimerActive(autoNext); // Follow settings by default
       setIframeStartAt(0);
-      incrementPlayCount(currentSong.bvid);
-
       // If the song changed while the browser tab was hidden/backgrounded,
       // flag it so we reload the iframe to force autoplay the moment the user brings it to foreground
       if (document.hidden) {
@@ -288,19 +260,9 @@ export default function Player({
     <div
       id="active-player-card"
       onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      style={
-        isMiniCDMode
-          ? {
-              transform: `translate(${dragPos.x}px, ${dragPos.y}px)`,
-              touchAction: 'none',
-            }
-          : {}
-      }
       className={
         isMiniCDMode
-          ? "relative flex flex-col items-center justify-center p-6 bg-[#09090e]/85 backdrop-blur-xl border border-white/10 rounded-[32px] shadow-2xl w-full max-w-[320px] aspect-square mx-auto overflow-hidden group select-none transition-shadow hover:shadow-cyan-500/10 duration-300 cursor-grab active:cursor-grabbing"
+          ? "relative flex items-center justify-center w-full h-full bg-transparent overflow-hidden group select-none cursor-grab active:cursor-grabbing"
           : "bg-[#08080c] border border-white/5 rounded-3xl p-6 shadow-2xl space-y-6"
       }
     >
@@ -435,19 +397,15 @@ export default function Player({
       {isMiniCDMode ? (
         /* MINI CD MODE DESIGN */
         <>
-          {/* Ambient subtle glow */}
-          <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/10 to-pink-500/10 pointer-events-none opacity-40"></div>
-
           {/* Outer Circular Ring */}
           <div className="relative z-10 flex flex-col items-center justify-center select-none">
             {/* Spinning CD Cover */}
-            <button
-              onClick={togglePlayback}
-              className="relative focus:outline-none focus:ring-0 active:scale-95 transition-transform cursor-pointer"
-              title={isTimerActive ? "点击暂停" : "点击播放"}
+            <div
+              className="relative active:scale-95 transition-transform cursor-grab active:cursor-grabbing"
+              title="拖动唱片移动；悬停显示播放控制"
             >
               {/* Spinning Vinyl CD */}
-              <div className={`w-44 h-44 rounded-full bg-slate-950 border-[6px] border-slate-900 shadow-2xl relative flex items-center justify-center overflow-hidden ${isTimerActive && timeLeft > 0 ? 'animate-spin [animation-duration:15s]' : ''}`}>
+              <div className={`w-44 h-44 rounded-full bg-slate-950 border-[6px] border-slate-900 shadow-[0_10px_28px_rgba(0,0,0,0.65)] relative flex items-center justify-center overflow-hidden ${isTimerActive && timeLeft > 0 ? 'animate-spin [animation-duration:15s]' : ''}`}>
                 <div className="absolute inset-0 border-[10px] border-black/40 rounded-full"></div>
                 {/* CD Cover Image in Center */}
                 <img
@@ -466,41 +424,21 @@ export default function Player({
                   </div>
                 </div>
               </div>
-            </button>
-
-            {/* Mini Playback Status Floating Pill */}
-            <div className="absolute -bottom-2 px-3 py-1 bg-slate-950/95 border border-white/5 text-[10px] text-slate-300 rounded-full shadow-lg font-mono flex items-center gap-1.5 backdrop-blur max-w-[200px]">
-              <span className={`w-1.5 h-1.5 rounded-full ${isTimerActive ? 'bg-cyan-400 animate-pulse' : 'bg-slate-600'}`}></span>
-              <span className="truncate max-w-[120px]">{currentSong.title}</span>
             </div>
-          </div>
 
-          {/* Always on Top toggle for Mini CD Mode under Tauri */}
-          {isTauri && (
-            <button
-              onClick={toggleAlwaysOnTop}
-              className={`absolute top-4 left-4 p-2 rounded-full transition-all cursor-pointer shadow-lg border ${
-                isAlwaysOnTop
-                  ? 'text-pink-400 bg-pink-500/10 border-pink-500/25 shadow-pink-500/5'
-                  : 'text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 border-white/5'
-              }`}
-              title={isAlwaysOnTop ? "取消窗口置顶" : "窗口置顶"}
-            >
-              <Pin className="w-4 h-4" />
-            </button>
-          )}
+          </div>
 
           {/* Back to Large view controller button */}
           <button
             onClick={() => setIsMiniCDMode && setIsMiniCDMode(false)}
-            className="absolute top-4 right-4 text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 p-2 rounded-full transition-all cursor-pointer shadow-lg border border-white/5"
-            title="返回大窗口"
+            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-white bg-black/60 hover:bg-black/80 p-2 rounded-full transition-all cursor-pointer shadow-lg border border-white/10"
+            title="返回主窗口"
           >
             <Minimize2 className="w-4 h-4 rotate-180" />
           </button>
 
           {/* Quick controls underneath */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             <button
               onClick={(e) => { e.stopPropagation(); onPrev(); }}
               className="text-slate-400 hover:text-white p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 cursor-pointer transition-all active:scale-90"

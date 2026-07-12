@@ -15,24 +15,23 @@
     ]
   },
   "build": {
-    "beforeDevCommand": "",
+    "beforeDevCommand": "npm run dev:frontend",
     "beforeBuildCommand": "npm run build:frontend",
     "devUrl": "http://localhost:3000",
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "BiliRandomizer - B站歌单融合随机播放器",
-        "width": 1120,
-        "height": 780,
-        "resizable": true,
-        "fullscreen": false,
-        "center": true
-      }
-    ],
-    "security": {
-      "csp": null
-    }
+    "windows": [{
+      "title": "BiliRandomizer - B站收藏夹融合随机播放器",
+      "transparent": true,
+      "decorations": true,
+      "shadow": true,
+      "width": 1120,
+      "height": 780,
+      "resizable": true,
+      "fullscreen": false,
+      "center": true
+    }],
+    "security": { "csp": null }
   }
 }

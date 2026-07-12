@@ -2,61 +2,48 @@ name: Build Desktop Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
   workflow_dispatch:
 
 jobs:
   build-tauri:
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: 'windows-latest'
-            args: ''
-
-    runs-on: ${{ matrix.platform }}
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: 'npm'
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Frontend Dependencies
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install frontend dependencies
         run: npm ci
-
-      - name: Build Frontend and Compile Tauri Executable
+      - name: Build and publish desktop application
         id: tauri_build
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v__VERSION__
-          releaseName: 'BiliRandomizer v__VERSION__'
-          releaseBody: '🎉 BiliRandomizer B站歌单融合随机播放器 Windows 桌面版。\n\n### 📦 软件特点\n- **独立窗口运行**：脱离浏览器，轻量高效。\n- **极简旋转 CD 挂机**：完美的音乐挂机体验。\n- **窗口置顶 (Always on Top)**：在写代码或玩游戏时将播放器钉在最上层。\n- **无感多端同步**：通过 LocalStorage 同步最新播放进度。\n\n### 🚀 安装说明\n下载下方 Assets 中的 `.exe` 或 `.msi` 安装包，双击运行即可！'
+          releaseName: BiliRandomizer v__VERSION__
+          releaseBody: |
+            BiliRandomizer Windows 桌面版。
+
+            - 多收藏夹融合随机播放
+            - 迷你 CD 窗口和窗口置顶
+            - SESSDATA 使用 Windows 凭据管理器保存
           releaseDraft: false
           prerelease: false
-          args: ${{ matrix.args }}
-
-      - name: Package and Upload Portable Version
+      - name: Package portable version
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $version = "${{ steps.tauri_build.outputs.appVersion }}"
           $portableDir = "portable\BiliRandomizer-$version"
-          $portableExe = "$portableDir\BiliRandomizer.exe"
           $zipFile = "BiliRandomizer_${version}_Windows_x64_Portable.zip"
-
           New-Item -ItemType Directory -Path $portableDir -Force | Out-Null
-          Copy-Item "src-tauri\target\release\bili-randomizer.exe" $portableExe
+          Copy-Item "src-tauri\target\release\bili-randomizer.exe" "$portableDir\BiliRandomizer.exe"
           Compress-Archive -Path "$portableDir\*" -DestinationPath $zipFile -Force
           gh release upload "v$version" $zipFile --clobber
