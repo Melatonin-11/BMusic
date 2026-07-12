@@ -5,7 +5,7 @@ import Player from './components/Player';
 import SongList from './components/SongList';
 import StatsDashboard from './components/StatsDashboard';
 import { PlaylistConfig, Song, PlaybackHistoryItem } from './types';
-import { Music, FolderHeart, BarChart3, Radio, HelpCircle, AlertCircle, Shuffle } from 'lucide-react';
+import { Music, FolderHeart, BarChart3, Radio, HelpCircle, AlertCircle, Shuffle, Minus, Square, X } from 'lucide-react';
 import { pickNextSong } from './utils/playback';
 
 export default function App() {
@@ -144,7 +144,7 @@ export default function App() {
         await appWindow.setAlwaysOnTop(true);
       } else if (normalWindowRef.current) {
         const normal = normalWindowRef.current;
-        await appWindow.setDecorations(true);
+        await appWindow.setDecorations(false);
         await appWindow.setShadow(true);
         await appWindow.setResizable(true);
         await appWindow.setSize(new LogicalSize(normal.size.width, normal.size.height));
@@ -253,7 +253,60 @@ export default function App() {
   return (
     <div id="root-app-container" className={isMiniCDMode
       ? "w-screen h-screen bg-transparent text-slate-100 overflow-hidden select-none"
-      : "min-h-screen bg-[#050507] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200"}>
+      : "min-h-screen bg-[#050507] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200 border border-white/[0.07]"}>
+
+      {/* Desktop title bar: matches the app instead of using Windows decorations. */}
+      {!isMiniCDMode && (
+        <div
+          data-tauri-drag-region
+          className="h-10 flex-shrink-0 sticky top-0 z-[100] flex items-center justify-between bg-[#09090e]/95 backdrop-blur-xl border-b border-white/[0.07] select-none"
+          onDoubleClick={async () => {
+            const { getCurrentWindow } = await import('@tauri-apps/api/window');
+            await getCurrentWindow().toggleMaximize();
+          }}
+        >
+          <div data-tauri-drag-region className="flex items-center gap-2.5 pl-3 min-w-0">
+            <div data-tauri-drag-region className="w-6 h-6 rounded-lg bg-gradient-to-tr from-cyan-500 to-pink-500 flex items-center justify-center shadow-md">
+              <Radio className="w-3.5 h-3.5 text-slate-950" />
+            </div>
+            <span data-tauri-drag-region className="text-[11px] font-mono font-bold tracking-wider text-slate-300 truncate">
+              BiliRandomizer · B站收藏夹融合随机播放器
+            </span>
+          </div>
+          <div className="h-full flex items-stretch">
+            <button
+              onClick={async () => {
+                const { getCurrentWindow } = await import('@tauri-apps/api/window');
+                await getCurrentWindow().minimize();
+              }}
+              className="w-12 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/[0.07] transition-colors cursor-pointer"
+              title="最小化"
+            >
+              <Minus className="w-4 h-4" />
+            </button>
+            <button
+              onClick={async () => {
+                const { getCurrentWindow } = await import('@tauri-apps/api/window');
+                await getCurrentWindow().toggleMaximize();
+              }}
+              className="w-12 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/[0.07] transition-colors cursor-pointer"
+              title="最大化/还原"
+            >
+              <Square className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={async () => {
+                const { getCurrentWindow } = await import('@tauri-apps/api/window');
+                await getCurrentWindow().close();
+              }}
+              className="w-12 flex items-center justify-center text-slate-400 hover:text-white hover:bg-rose-500 transition-colors cursor-pointer"
+              title="关闭"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
       
       {/* Opening Logo Splash screen */}
       <AnimatePresence>
@@ -315,7 +368,7 @@ export default function App() {
       
       {/* Upper Navigation Header bar */}
       {!isMiniCDMode && (
-        <header id="app-header-navigation" className="bg-[#0a0a0f] border-b border-white/5 sticky top-0 z-50 shadow-md">
+        <header id="app-header-navigation" className="bg-[#0a0a0f] border-b border-white/5 sticky top-10 z-50 shadow-md">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
             
             {/* Logo brand */}

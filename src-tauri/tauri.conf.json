@@ -24,7 +24,7 @@
     "windows": [{
       "title": "BiliRandomizer - B站收藏夹融合随机播放器",
       "transparent": true,
-      "decorations": true,
+      "decorations": false,
       "shadow": true,
       "width": 1120,
       "height": 780,
