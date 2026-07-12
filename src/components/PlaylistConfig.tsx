@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { PlaylistConfig, Song } from '../types';
 import { Play, RotateCw, Trash2, ShieldAlert, Key, HelpCircle, FolderHeart, Plus, CheckCircle2, AlertCircle, Eye, EyeOff, Copy, Check, Edit2, X } from 'lucide-react';
 
@@ -8,6 +9,43 @@ interface PlaylistConfigProps {
   sessdata: string;
   setSessdata: (sessdata: string) => void;
 }
+
+const isTauriRuntime = () => Boolean((window as any).__TAURI_INTERNALS__);
+
+const fetchBilibiliNav = async (sessdata: string) => {
+  if (isTauriRuntime()) {
+    return invoke<any>('bilibili_nav', { sessdata });
+  }
+
+  const response = await fetch('/api/bilibili/nav', {
+    headers: { 'x-sessdata': sessdata },
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+};
+
+const fetchBilibiliPlaylist = async (
+  mediaId: string,
+  page: number,
+  pageSize: number,
+  sessdata: string
+) => {
+  if (isTauriRuntime()) {
+    return invoke<any>('bilibili_playlist', {
+      mediaId,
+      pn: page,
+      ps: pageSize,
+      sessdata,
+    });
+  }
+
+  const response = await fetch(
+    `/api/bilibili/playlist?media_id=${encodeURIComponent(mediaId)}&pn=${page}&ps=${pageSize}`,
+    { headers: { 'x-sessdata': sessdata } }
+  );
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+};
 
 export default function PlaylistConfigComponent({
   playlists,
@@ -155,10 +193,7 @@ export default function PlaylistConfigComponent({
     }
     setVerifyingCookie(true);
     try {
-      const res = await fetch('/api/bilibili/nav', {
-        headers: { 'x-sessdata': token },
-      });
-      const data = await res.json();
+      const data = await fetchBilibiliNav(token);
       if (data.code === 0 && data.data?.isLogin) {
         setUserProfile({
           uname: data.data.uname,
@@ -249,10 +284,7 @@ export default function PlaylistConfigComponent({
 
     try {
       // Step 1: Fetch Page 1 to see total count and verify folder name
-      const firstPageRes = await fetch(`/api/bilibili/playlist?media_id=${playlistId}&pn=1&ps=20`, {
-        headers: { 'x-sessdata': sessdata },
-      });
-      const firstPageData = await firstPageRes.json();
+      const firstPageData = await fetchBilibiliPlaylist(playlistId, 1, 20, sessdata);
 
       if (firstPageData.code !== 0) {
         throw new Error(firstPageData.message || `API错误代码: ${firstPageData.code}`);
@@ -305,10 +337,7 @@ export default function PlaylistConfigComponent({
       const delayMs = 300; // 300ms gap between batches to prevent B站 IP blocks
 
       const fetchPage = async (page: number): Promise<Song[]> => {
-        const res = await fetch(`/api/bilibili/playlist?media_id=${playlistId}&pn=${page}&ps=${pageSize}`, {
-          headers: { 'x-sessdata': sessdata },
-        });
-        const data = await res.json();
+        const data = await fetchBilibiliPlaylist(playlistId, page, pageSize, sessdata);
         if (data.code !== 0) {
           throw new Error(`获取第 ${page} 页失败: ${data.message || '未知API错误'}`);
         }

@@ -313,7 +313,7 @@ export default function App() {
                   <h1 className="text-base font-bold tracking-[0.15em] text-white font-mono uppercase">
                     BILI-RANDOMIZER
                   </h1>
-                  <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded font-mono text-cyan-400">v1.04</span>
+                  <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded font-mono text-cyan-400">v1.05</span>
                 </div>
                 <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-0.5">
                   突破单收藏夹 1000 上限 · 跨歌单无缝随机
