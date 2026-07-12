@@ -404,25 +404,41 @@ export default function Player({
               className="relative active:scale-95 transition-transform cursor-grab active:cursor-grabbing"
               title="拖动唱片移动；悬停显示播放控制"
             >
-              {/* Spinning Vinyl CD */}
-              <div className={`w-44 h-44 rounded-full bg-slate-950 border-[6px] border-slate-900 shadow-[0_10px_28px_rgba(0,0,0,0.65)] relative flex items-center justify-center overflow-hidden ${isTimerActive && timeLeft > 0 ? 'animate-spin [animation-duration:15s]' : ''}`}>
-                <div className="absolute inset-0 border-[10px] border-black/40 rounded-full"></div>
-                {/* CD Cover Image in Center */}
+              {/* Spinning full-cover record. Controls live outside this rotating layer. */}
+              <div className={`w-44 h-44 rounded-full bg-slate-950 border-[6px] border-slate-900 shadow-[0_10px_28px_rgba(0,0,0,0.65)] relative overflow-hidden ${isTimerActive && timeLeft > 0 ? 'animate-spin [animation-duration:15s]' : ''}`}>
                 <img
                   src={currentSong.cover}
                   alt={currentSong.title}
                   referrerPolicy="no-referrer"
-                  className="w-24 h-24 rounded-full object-cover border-4 border-slate-900"
+                  className="absolute inset-0 w-full h-full rounded-full object-cover"
                 />
-                {/* Vinyl grooves */}
-                <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_45%,rgba(255,255,255,0.03)_46%,transparent_47%,rgba(255,255,255,0.03)_50%,transparent_51%)] pointer-events-none"></div>
-                
-                {/* Play/Pause overlay icon on hover */}
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-200">
-                  <div className="w-12 h-12 rounded-full bg-cyan-400 text-slate-950 flex items-center justify-center shadow-lg">
-                    {isTimerActive ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-0.5" />}
-                  </div>
-                </div>
+                <div className="absolute inset-0 rounded-full bg-black/20 pointer-events-none"></div>
+                <div className="absolute inset-0 rounded-full bg-[repeating-radial-gradient(circle,transparent_0,transparent_8px,rgba(0,0,0,0.22)_9px,rgba(255,255,255,0.05)_10px)] pointer-events-none"></div>
+              </div>
+
+              {/* Previous / play / next controls stay fixed in the record center. */}
+              <div className="absolute inset-0 rounded-full bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity duration-200">
+                <button
+                  onClick={(e) => { e.stopPropagation(); onPrev(); }}
+                  className="w-9 h-9 rounded-full bg-black/65 border border-white/15 text-white/85 hover:text-white hover:bg-black/85 flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-lg"
+                  title="上一首"
+                >
+                  <SkipBack className="w-4 h-4 fill-current" />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); togglePlayback(); }}
+                  className="w-12 h-12 rounded-full bg-cyan-400 text-slate-950 hover:bg-cyan-300 flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-lg shadow-cyan-500/30"
+                  title={isTimerActive ? "暂停" : "播放"}
+                >
+                  {isTimerActive ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-0.5" />}
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onNext(); }}
+                  className="w-9 h-9 rounded-full bg-black/65 border border-white/15 text-white/85 hover:text-white hover:bg-black/85 flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-lg"
+                  title="下一首"
+                >
+                  <SkipForward className="w-4 h-4 fill-current" />
+                </button>
               </div>
             </div>
 
@@ -436,33 +452,6 @@ export default function Player({
           >
             <Minimize2 className="w-4 h-4 rotate-180" />
           </button>
-
-          {/* Quick controls underneath */}
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <button
-              onClick={(e) => { e.stopPropagation(); onPrev(); }}
-              className="text-slate-400 hover:text-white p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 cursor-pointer transition-all active:scale-90"
-              title="上一首"
-            >
-              <SkipBack className="w-3.5 h-3.5" />
-            </button>
-            
-            <button
-              onClick={(e) => { e.stopPropagation(); togglePlayback(); }}
-              className="text-slate-950 bg-cyan-400 hover:bg-cyan-300 p-2 rounded-full cursor-pointer transition-all active:scale-90 shadow-lg shadow-cyan-400/10"
-              title={isTimerActive ? "暂停" : "播放"}
-            >
-              {isTimerActive ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
-            </button>
-
-            <button
-              onClick={(e) => { e.stopPropagation(); onNext(); }}
-              className="text-slate-400 hover:text-white p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 cursor-pointer transition-all active:scale-90"
-              title="下一首"
-            >
-              <SkipForward className="w-3.5 h-3.5" />
-            </button>
-          </div>
 
           {/* Background Playback Gesture Overlay inside Mini View */}
           {showResumeBanner && (

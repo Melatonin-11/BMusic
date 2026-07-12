@@ -132,7 +132,8 @@ export default function App() {
           size: { width: size.width / scaleFactor, height: size.height / scaleFactor },
           position: { x: position.x / scaleFactor, y: position.y / scaleFactor },
         };
-        const miniSize = 230;
+        // Extra transparent margin prevents the record shadow from being clipped by the WebView edge.
+        const miniSize = 270;
         const centerX = position.x / scaleFactor + size.width / scaleFactor / 2;
         const centerY = position.y / scaleFactor + size.height / scaleFactor / 2;
         await appWindow.setDecorations(false);
