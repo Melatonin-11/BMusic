@@ -314,10 +314,10 @@ export default function Player({
               </div>
               <div className="text-center space-y-1">
                 <span className="inline-block text-[9px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2.5 py-0.5 rounded-full font-mono uppercase tracking-wider">
-                  PURE_AUDIO_ACTIVE
+                  纯音频播放中
                 </span>
                 <p className="text-[11px] text-slate-400 font-mono tracking-widest uppercase animate-pulse">
-                  Now playing in audio-only mode
+                  当前仅播放声音
                 </p>
               </div>
             </div>

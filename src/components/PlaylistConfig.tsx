@@ -22,6 +22,25 @@ const fetchBilibiliPlaylist = async (
   return invoke<any>('bilibili_playlist', { mediaId, pn: page, ps: pageSize });
 };
 
+const explainSyncError = (error: unknown): string => {
+  const detail = error instanceof Error ? error.message : String(error || '未知错误');
+  const normalized = detail.toLowerCase();
+
+  if (/(-412|-352|http 429|访问频繁|请求过于频繁|风控|rate limit)/i.test(detail)) {
+    return '请求过于频繁，已触发 B 站临时风控。建议等待 5～15 分钟后重试，并避免连续同步多个大型收藏夹。';
+  }
+  if (/(-101|未登录|账号未登录|sessdata)/i.test(detail)) {
+    return '登录凭据可能已失效。请清除并重新填写 SESSDATA，然后再次同步。';
+  }
+  if (/(-403|无权限|权限不足|不可见|私密)/i.test(detail)) {
+    return '当前账号无权读取该收藏夹。请确认收藏夹属于当前登录账号，并检查 SESSDATA。';
+  }
+  if (/network|failed to fetch|request failed|timeout|timed out|connection/i.test(normalized)) {
+    return '网络请求失败。请检查网络连接，稍后重新同步。';
+  }
+  return `B 站接口返回异常：${detail}。可以稍后重试；若持续失败，请检查收藏夹 ID 和登录凭据。`;
+};
+
 export default function PlaylistConfigComponent({
   playlists,
   setPlaylists,
@@ -243,7 +262,7 @@ export default function PlaylistConfigComponent({
       const firstPageData = await fetchBilibiliPlaylist(playlistId, 1, 20);
 
       if (firstPageData.code !== 0) {
-        throw new Error(firstPageData.message || `API错误代码: ${firstPageData.code}`);
+        throw new Error(`[${firstPageData.code}] ${firstPageData.message || '未知 API 错误'}`);
       }
 
       const info = firstPageData.data.info;
@@ -289,13 +308,13 @@ export default function PlaylistConfigComponent({
 
       // Create chunks of page requests to run sequentially with small gaps
       const allSongs: Song[] = [...loadedSongs];
-      const concurrencyLimit = 3; // 3 requests at a time
-      const delayMs = 300; // 300ms gap between batches to prevent B站 IP blocks
+      const concurrencyLimit = 2;
+      const delayMs = 800; // Deliberately conservative to reduce Bilibili rate limiting.
 
       const fetchPage = async (page: number): Promise<Song[]> => {
         const data = await fetchBilibiliPlaylist(playlistId, page, pageSize);
         if (data.code !== 0) {
-          throw new Error(`获取第 ${page} 页失败: ${data.message || '未知API错误'}`);
+          throw new Error(`[${data.code}] 获取第 ${page} 页失败：${data.message || '未知 API 错误'}`);
         }
         const medias = data.data.medias || [];
         return medias.map((m: any) => ({
@@ -355,7 +374,7 @@ export default function PlaylistConfigComponent({
         [playlistId]: {
           ...prev[playlistId],
           status: 'error',
-          errorMsg: error.message || '获取失败，请检查SESSDATA或网络',
+          errorMsg: explainSyncError(error),
         },
       }));
     }
@@ -558,13 +577,13 @@ export default function PlaylistConfigComponent({
       {/* Playlists Management List */}
       <div id="playlists-list-card" className="bg-[#08080c] border border-white/5 rounded-2xl p-6 shadow-xl">
         <h3 className="text-base font-bold text-slate-100 mb-4 flex items-center gap-2 font-mono uppercase tracking-wider border-b border-white/5 pb-3">
-          已配置的收藏夹 ({playlists.length} FOLDERS)
+          已配置的收藏夹（{playlists.length} 个）
         </h3>
 
         {playlists.length === 0 ? (
           <div id="empty-playlists-notice" className="text-center py-10 border border-white/5 bg-[#050507] rounded-2xl">
             <FolderHeart className="w-12 h-12 text-slate-700 mx-auto mb-3" />
-            <p className="text-slate-450 text-xs font-mono">NO CONFIGURED PLAYLISTS</p>
+            <p className="text-slate-450 text-xs font-mono">暂无已配置的收藏夹</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
@@ -589,7 +608,7 @@ export default function PlaylistConfigComponent({
                       )}
                       {playlist.isLoaded && (
                         <span className="absolute bottom-0 right-0 bg-cyan-400 text-[9px] text-slate-950 px-1 font-bold rounded-tl-md font-mono">
-                          LOADED
+                          已同步
                         </span>
                       )}
                     </div>
@@ -648,8 +667,8 @@ export default function PlaylistConfigComponent({
                       </div>
                       <p className="text-[11px] text-slate-450 mt-1 font-mono">
                         {playlist.isLoaded
-                          ? `STATS: ${playlist.songs.length} TRACKS LOADED`
-                          : 'STATUS: NOT LOADED - SYNC REQUIRED'}
+                          ? `已同步 ${playlist.songs.length} 首歌曲`
+                          : '尚未同步，请点击右侧同步数据'}
                       </p>
                     </div>
                   </div>
@@ -661,8 +680,8 @@ export default function PlaylistConfigComponent({
                         <div className="flex justify-between text-[10px] text-slate-500 font-mono">
                           <span>
                             {loading.status === 'fetching_page_1'
-                              ? 'LOADING HEADER...'
-                              : `FETCHED ${loading.loaded}/${loading.total}`}
+                              ? '正在读取收藏夹信息…'
+                              : `已获取 ${loading.loaded}/${loading.total} 首`}
                           </span>
                           <span className="font-mono text-cyan-400">{loading.progress}%</span>
                         </div>
@@ -676,9 +695,10 @@ export default function PlaylistConfigComponent({
                     )}
 
                     {loading?.status === 'error' && (
-                      <span className="text-[10px] text-rose-450 max-w-[180px] truncate font-mono" title={loading.errorMsg}>
-                        ERR: {loading.errorMsg}
-                      </span>
+                      <div className="flex items-start gap-1.5 max-w-[320px] text-[11px] leading-relaxed text-rose-300 bg-rose-500/[0.07] border border-rose-500/20 rounded-lg px-2.5 py-2" title={loading.errorMsg}>
+                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                        <span><strong>同步失败：</strong>{loading.errorMsg}</span>
+                      </div>
                     )}
 
                     <div className="flex items-center gap-2 justify-end self-end sm:self-auto">
