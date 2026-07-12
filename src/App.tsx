@@ -104,6 +104,15 @@ export default function App() {
     localStorage.setItem('bili_setting_shuffle', shuffleMode);
   }, [shuffleMode]);
 
+  // Handle active tab switching when mini mode triggers
+  useEffect(() => {
+    if (isMiniCDMode) {
+      setActiveTab('player');
+    }
+  }, [isMiniCDMode]);
+
+
+
   // Hide opening logo splash screen after 2.5 seconds
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -228,38 +237,6 @@ export default function App() {
     setHistory([]);
   };
 
-  if (isMiniCDMode) {
-    return (
-      <div id="root-app-container" className="min-h-screen bg-[#030305] text-slate-100 flex items-center justify-center p-4 selection:bg-cyan-500/30 selection:text-cyan-200 relative overflow-hidden">
-        {/* Subtle background color visualizers */}
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full bg-cyan-500/5 blur-[120px] pointer-events-none"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full bg-pink-500/5 blur-[120px] pointer-events-none"></div>
-        
-        <main className="relative z-10 w-full max-w-sm">
-          <Player
-            currentSong={currentSong}
-            onNext={playNextSong}
-            onPrev={playPrevSong}
-            history={history}
-            autoNext={autoNext}
-            setAutoNext={setAutoNext}
-            countdownBuffer={countdownBuffer}
-            setCountdownBuffer={setCountdownBuffer}
-            hideDanmaku={hideDanmaku}
-            setHideDanmaku={setHideDanmaku}
-            highQuality={highQuality}
-            setHighQuality={setHighQuality}
-            incrementPlayCount={incrementPlayCount}
-            audioOnlyMode={audioOnlyMode}
-            setAudioOnlyMode={setAudioOnlyMode}
-            isMiniCDMode={isMiniCDMode}
-            setIsMiniCDMode={setIsMiniCDMode}
-          />
-        </main>
-      </div>
-    );
-  }
-
   return (
     <div id="root-app-container" className="min-h-screen bg-[#050507] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
       
@@ -322,85 +299,87 @@ export default function App() {
       </AnimatePresence>
       
       {/* Upper Navigation Header bar */}
-      <header id="app-header-navigation" className="bg-[#0a0a0f] border-b border-white/5 sticky top-0 z-50 shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          
-          {/* Logo brand */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-pink-500 flex items-center justify-center shadow-lg shadow-cyan-500/10">
-              <Radio className="w-5 h-5 text-slate-950 font-black animate-pulse" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base font-bold tracking-[0.15em] text-white font-mono uppercase">
-                  BILI-RANDOMIZER
-                </h1>
-                <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded font-mono text-cyan-400">v1.04</span>
+      {!isMiniCDMode && (
+        <header id="app-header-navigation" className="bg-[#0a0a0f] border-b border-white/5 sticky top-0 z-50 shadow-md">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            
+            {/* Logo brand */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-pink-500 flex items-center justify-center shadow-lg shadow-cyan-500/10">
+                <Radio className="w-5 h-5 text-slate-950 font-black animate-pulse" />
               </div>
-              <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-0.5">
-                突破单收藏夹 1000 上限 · 跨歌单无缝随机
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-base font-bold tracking-[0.15em] text-white font-mono uppercase">
+                    BILI-RANDOMIZER
+                  </h1>
+                  <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded font-mono text-cyan-400">v1.04</span>
+                </div>
+                <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-0.5">
+                  突破单收藏夹 1000 上限 · 跨歌单无缝随机
+                </p>
+              </div>
             </div>
+
+            {/* Tab buttons */}
+            <nav className="flex items-center bg-[#050507] border border-white/5 rounded-xl p-1">
+              <button
+                onClick={() => setActiveTab('player')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'player'
+                    ? 'bg-gradient-to-r from-cyan-500/10 to-pink-500/10 text-white border border-cyan-400/20 shadow-[0_0_8px_rgba(34,211,238,0.15)]'
+                    : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                }`}
+              >
+                <Radio className="w-4 h-4" />
+                <span>播放器</span>
+                {currentSong && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setActiveTab('songlist')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'songlist'
+                    ? 'bg-gradient-to-r from-cyan-500/10 to-pink-500/10 text-white border border-cyan-400/20 shadow-[0_0_8px_rgba(34,211,238,0.15)]'
+                    : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                }`}
+              >
+                <Music className="w-4 h-4" />
+                <span>融合曲库 ({allActiveSongs.length})</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('playlists')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'playlists'
+                    ? 'bg-gradient-to-r from-cyan-500/10 to-pink-500/10 text-white border border-cyan-400/20 shadow-[0_0_8px_rgba(34,211,238,0.15)]'
+                    : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                }`}
+              >
+                <FolderHeart className="w-4 h-4" />
+                <span>歌单管理 ({playlists.length})</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('stats')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'stats'
+                    ? 'bg-gradient-to-r from-cyan-500/10 to-pink-500/10 text-white border border-cyan-400/20 shadow-[0_0_8px_rgba(34,211,238,0.15)]'
+                    : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                }`}
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span>曲库统计</span>
+              </button>
+            </nav>
           </div>
-
-          {/* Tab buttons */}
-          <nav className="flex items-center bg-[#050507] border border-white/5 rounded-xl p-1">
-            <button
-              onClick={() => setActiveTab('player')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'player'
-                  ? 'bg-gradient-to-r from-cyan-500/10 to-pink-500/10 text-white border border-cyan-400/20 shadow-[0_0_8px_rgba(34,211,238,0.15)]'
-                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
-              }`}
-            >
-              <Radio className="w-4 h-4" />
-              <span>播放器</span>
-              {currentSong && (
-                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
-              )}
-            </button>
-
-            <button
-              onClick={() => setActiveTab('songlist')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'songlist'
-                  ? 'bg-gradient-to-r from-cyan-500/10 to-pink-500/10 text-white border border-cyan-400/20 shadow-[0_0_8px_rgba(34,211,238,0.15)]'
-                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
-              }`}
-            >
-              <Music className="w-4 h-4" />
-              <span>融合曲库 ({allActiveSongs.length})</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('playlists')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'playlists'
-                  ? 'bg-gradient-to-r from-cyan-500/10 to-pink-500/10 text-white border border-cyan-400/20 shadow-[0_0_8px_rgba(34,211,238,0.15)]'
-                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
-              }`}
-            >
-              <FolderHeart className="w-4 h-4" />
-              <span>歌单管理 ({playlists.length})</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('stats')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'stats'
-                  ? 'bg-gradient-to-r from-cyan-500/10 to-pink-500/10 text-white border border-cyan-400/20 shadow-[0_0_8px_rgba(34,211,238,0.15)]'
-                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
-              }`}
-            >
-              <BarChart3 className="w-4 h-4" />
-              <span>曲库统计</span>
-            </button>
-          </nav>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* Main Content Area */}
-      <main id="app-main-content" className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main id="app-main-content" className={isMiniCDMode ? "flex-1 flex flex-col justify-center items-center p-4 relative" : "flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 relative"}>
         
         {/* Quick reminder when no folders are loaded */}
         {playlists.length === 0 && activeTab !== 'playlists' && (
@@ -421,11 +400,11 @@ export default function App() {
           </div>
         )}
 
-        {/* Tab display views */}
-        <div className={activeTab === 'player' ? "grid grid-cols-1 lg:grid-cols-12 gap-8 items-start" : "hidden"}>
+        {/* Tab display views: Player View container */}
+        <div className={isMiniCDMode ? "w-full max-w-sm flex justify-center animate-in fade-in zoom-in duration-300" : (activeTab === 'player' ? "grid grid-cols-1 lg:grid-cols-12 gap-8 items-start" : "hidden")}>
           
-          {/* Embedded Active Player (Left-side col-span-8) */}
-          <div className="lg:col-span-8">
+          {/* Embedded Active Player */}
+          <div className={isMiniCDMode ? "w-full" : "lg:col-span-8"}>
             <Player
               currentSong={currentSong}
               onNext={playNextSong}
@@ -448,71 +427,71 @@ export default function App() {
           </div>
 
           {/* Config & Shuffle Controller (Right-side col-span-4) */}
-          <div className="lg:col-span-4 space-y-6">
-            
-            {/* Randomization Modes Controller */}
-            <div className="bg-[#08080c] border border-white/5 rounded-3xl p-6 shadow-xl space-y-4">
-              <h3 className="font-bold text-slate-200 flex items-center gap-2 text-xs uppercase tracking-[0.2em] border-b border-white/5 pb-3 font-mono">
-                <Shuffle className="w-4 h-4 text-cyan-400" />
-                随机算法配置
-              </h3>
+          <div className={(!isMiniCDMode && activeTab === 'player') ? "lg:col-span-4 space-y-6" : "hidden"}>
+              
+              {/* Randomization Modes Controller */}
+              <div className="bg-[#08080c] border border-white/5 rounded-3xl p-6 shadow-xl space-y-4">
+                <h3 className="font-bold text-slate-200 flex items-center gap-2 text-xs uppercase tracking-[0.2em] border-b border-white/5 pb-3 font-mono">
+                  <Shuffle className="w-4 h-4 text-cyan-400" />
+                  随机算法配置
+                </h3>
 
-              <div className="space-y-3">
-                <button
-                  onClick={() => setShuffleMode('pure')}
-                  className={`w-full p-4 rounded-xl text-left border transition-all cursor-pointer block ${
-                    shuffleMode === 'pure'
-                      ? 'bg-cyan-500/5 border-cyan-500/30 text-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.1)]'
-                      : 'bg-[#050507] border-white/5 hover:border-white/10 text-slate-400'
-                  }`}
-                >
-                  <div className="font-bold text-xs flex items-center gap-1.5 font-mono uppercase tracking-wider">
-                    <span>🎲 纯净全曲库随机 (Pure)</span>
-                    {shuffleMode === 'pure' && (
-                      <span className="text-[9px] bg-cyan-400 text-slate-950 px-1 rounded font-bold">ACTIVE</span>
-                    )}
-                  </div>
-                  <p className="text-[11px] opacity-75 mt-2 leading-relaxed">
-                    将所有收藏夹的视频统一合并，在总曲库里完全等概率挑选下一首。
-                  </p>
-                </button>
+                <div className="space-y-3">
+                  <button
+                    onClick={() => setShuffleMode('pure')}
+                    className={`w-full p-4 rounded-xl text-left border transition-all cursor-pointer block ${
+                      shuffleMode === 'pure'
+                        ? 'bg-cyan-500/5 border-cyan-500/30 text-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.1)]'
+                        : 'bg-[#050507] border-white/5 hover:border-white/10 text-slate-400'
+                    }`}
+                  >
+                    <div className="font-bold text-xs flex items-center gap-1.5 font-mono uppercase tracking-wider">
+                      <span>🎲 纯净全曲库随机 (Pure)</span>
+                      {shuffleMode === 'pure' && (
+                        <span className="text-[9px] bg-cyan-400 text-slate-950 px-1 rounded font-bold">ACTIVE</span>
+                      )}
+                    </div>
+                    <p className="text-[11px] opacity-75 mt-2 leading-relaxed">
+                      将所有收藏夹的视频统一合并，在总曲库里完全等概率挑选下一首。
+                    </p>
+                  </button>
 
-                <button
-                  onClick={() => setShuffleMode('balanced')}
-                  className={`w-full p-4 rounded-xl text-left border transition-all cursor-pointer block ${
-                    shuffleMode === 'balanced'
-                      ? 'bg-pink-500/5 border-pink-500/30 text-pink-400 shadow-[0_0_8px_rgba(236,72,153,0.1)]'
-                      : 'bg-[#050507] border-white/5 hover:border-white/10 text-slate-400'
-                  }`}
-                >
-                  <div className="font-bold text-xs flex items-center gap-1.5 font-mono uppercase tracking-wider">
-                    <span>⚖️ 文件夹均衡随机 (Balanced)</span>
-                    {shuffleMode === 'balanced' && (
-                      <span className="text-[9px] bg-pink-400 text-slate-950 px-1 rounded font-bold">ACTIVE</span>
-                    )}
-                  </div>
-                  <p className="text-[11px] opacity-75 mt-2 leading-relaxed">
-                    先随机抽选一个歌单文件夹，再在其中随机抽歌曲。避免巨型文件夹淹没小文件夹。
-                  </p>
-                </button>
+                  <button
+                    onClick={() => setShuffleMode('balanced')}
+                    className={`w-full p-4 rounded-xl text-left border transition-all cursor-pointer block ${
+                      shuffleMode === 'balanced'
+                        ? 'bg-pink-500/5 border-pink-500/30 text-pink-400 shadow-[0_0_8px_rgba(236,72,153,0.1)]'
+                        : 'bg-[#050507] border-white/5 hover:border-white/10 text-slate-400'
+                    }`}
+                  >
+                    <div className="font-bold text-xs flex items-center gap-1.5 font-mono uppercase tracking-wider">
+                      <span>⚖️ 文件夹均衡随机 (Balanced)</span>
+                      {shuffleMode === 'balanced' && (
+                        <span className="text-[9px] bg-pink-400 text-slate-950 px-1 rounded font-bold">ACTIVE</span>
+                      )}
+                    </div>
+                    <p className="text-[11px] opacity-75 mt-2 leading-relaxed">
+                      先随机抽选一个歌单文件夹，再在其中随机抽歌曲。避免巨型文件夹淹没小文件夹。
+                    </p>
+                  </button>
+                </div>
               </div>
-            </div>
 
-            {/* Launcher Info */}
-            <div className="bg-[#08080c] border border-white/5 rounded-3xl p-6 shadow-xl space-y-4">
-              <h3 className="font-bold text-slate-200 flex items-center gap-2 text-xs uppercase tracking-[0.2em] border-b border-white/5 pb-3 font-mono">
-                <HelpCircle className="w-4 h-4 text-cyan-400" />
-                使用指南与帮助
-              </h3>
-              <ul className="space-y-2 text-xs text-slate-450 leading-relaxed list-disc list-inside">
-                <li><strong>关于跨域</strong>: B站限制了网页直接调用 API，本工具通过后端代理服务进行加载，保证 100% 数据成功拉取。</li>
-                <li><strong>关于多歌单</strong>: 添加完毕后，可自由进行“同步数据”。同步后的歌曲会保存在您浏览器本地缓存中。</li>
-                <li><strong>切歌倒计时</strong>: 由于无法跨域读取B站视频结束事件，本工具获取视频的时长数据并进行实时秒数计时，结束后自动随机下一首！</li>
-                <li><strong>缓冲补偿</strong>: 如果发现视频缓冲较慢，可在设置中调大切歌延时缓冲(例如 3~5 秒)或者使用微调计时按钮。</li>
-              </ul>
-            </div>
+              {/* Launcher Info */}
+              <div className="bg-[#08080c] border border-white/5 rounded-3xl p-6 shadow-xl space-y-4">
+                <h3 className="font-bold text-slate-200 flex items-center gap-2 text-xs uppercase tracking-[0.2em] border-b border-white/5 pb-3 font-mono">
+                  <HelpCircle className="w-4 h-4 text-cyan-400" />
+                  使用指南与帮助
+                </h3>
+                <ul className="space-y-2 text-xs text-slate-450 leading-relaxed list-disc list-inside">
+                  <li><strong>关于跨域</strong>: B站限制了网页直接调用 API，本工具通过后端代理服务进行加载，保证 100% 数据成功拉取。</li>
+                  <li><strong>关于多歌单</strong>: 添加完毕后，可自由进行“同步数据”。同步后的歌曲会保存在您浏览器本地缓存中。</li>
+                  <li><strong>切歌倒计时</strong>: 由于无法跨域读取B站视频结束事件，本工具获取视频的时长数据并进行实时秒数计时，结束后自动随机下一首！</li>
+                  <li><strong>缓冲补偿</strong>: 如果发现视频缓冲较慢，可在设置中调大切歌延时缓冲(例如 3~5 秒)或者使用微调计时按钮。</li>
+                </ul>
+              </div>
 
-          </div>
+            </div>
         </div>
 
         {activeTab === 'songlist' && (

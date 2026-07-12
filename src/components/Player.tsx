@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Song, PlaybackHistoryItem } from '../types';
-import { Play, Pause, SkipForward, SkipBack, ExternalLink, RefreshCw, Volume2, Clock, Hourglass, Plus, Minus, Info, Music, Tv, HelpCircle, Minimize2 } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, ExternalLink, RefreshCw, Volume2, Clock, Hourglass, Plus, Minus, Info, Music, Tv, HelpCircle, Minimize2, Pin } from 'lucide-react';
 
 interface PlayerProps {
   currentSong: Song | null;
@@ -43,11 +43,69 @@ export default function Player({
 }: PlayerProps) {
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [isTimerActive, setIsTimerActive] = useState<boolean>(true);
+  const [isTauri, setIsTauri] = useState<boolean>(false);
+  const [isAlwaysOnTop, setIsAlwaysOnTop] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined) {
+      setIsTauri(true);
+    }
+  }, []);
+
+  const toggleAlwaysOnTop = async () => {
+    if (isTauri) {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const win = getCurrentWindow();
+        const nextState = !isAlwaysOnTop;
+        await win.setAlwaysOnTop(nextState);
+        setIsAlwaysOnTop(nextState);
+      } catch (err) {
+        console.error('Failed to set always on top:', err);
+      }
+    }
+  };
+
   const [iframeStartAt, setIframeStartAt] = useState<number>(0);
   const [iframeReloadKey, setIframeReloadKey] = useState<number>(0);
   const [showResumeBanner, setShowResumeBanner] = useState<boolean>(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const onNextRef = useRef(onNext);
+
+  // Draggable state for Mini CD Mode
+  const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
+  const isDraggingRef = useRef(false);
+  const startPosRef = useRef({ x: 0, y: 0 });
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (!isMiniCDMode) return;
+    if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('a')) return;
+    isDraggingRef.current = true;
+    startPosRef.current = { x: e.clientX - dragPos.x, y: e.clientY - dragPos.y };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!isDraggingRef.current) return;
+    const newX = e.clientX - startPosRef.current.x;
+    const newY = e.clientY - startPosRef.current.y;
+    setDragPos({ x: newX, y: newY });
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    isDraggingRef.current = false;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch (err) {
+      // Ignored
+    }
+  };
+
+  useEffect(() => {
+    if (!isMiniCDMode) {
+      setDragPos({ x: 0, y: 0 });
+    }
+  }, [isMiniCDMode]);
 
   // Background state keepers
   const silentAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -226,179 +284,36 @@ export default function Player({
     setIframeReloadKey((prev) => prev + 1);
   };
 
-  if (isMiniCDMode) {
-    return (
-      <div className="relative flex flex-col items-center justify-center p-6 bg-[#09090e]/80 backdrop-blur-xl border border-white/10 rounded-[32px] shadow-2xl w-full max-w-[320px] aspect-square mx-auto overflow-hidden group">
-        {/* Hidden Bilibili iframe to keep play state */}
-        <div className="absolute pointer-events-none opacity-[0.01] w-1 h-1 z-0">
-          {isTimerActive ? (
-            <iframe
-              key={`${currentSong.bvid}-${iframeReloadKey}`}
-              id="bilibili-player-iframe"
-              src={getBilibiliEmbedUrl()}
-              scrolling="no"
-              border="0"
-              frameBorder="no"
-              framespacing="0"
-              allowFullScreen={true}
-              allow="autoplay; encrypted-media; fullscreen"
-              className="absolute top-0 left-0 w-full h-full"
-              referrerPolicy="no-referrer"
-            ></iframe>
-          ) : null}
-        </div>
-
-        {/* Ambient subtle glow */}
-        <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/10 to-pink-500/10 pointer-events-none opacity-40"></div>
-
-        {/* Outer Circular Ring */}
-        <div className="relative z-10 flex flex-col items-center justify-center">
-          {/* Spinning CD Cover */}
-          <button
-            onClick={togglePlayback}
-            className="relative focus:outline-none focus:ring-0 active:scale-95 transition-transform cursor-pointer"
-            title={isTimerActive ? "点击暂停" : "点击播放"}
-          >
-            {/* Spinning Vinyl CD */}
-            <div className={`w-44 h-44 rounded-full bg-slate-950 border-[6px] border-slate-900 shadow-2xl relative flex items-center justify-center overflow-hidden ${isTimerActive && timeLeft > 0 ? 'animate-spin [animation-duration:15s]' : ''}`}>
-              <div className="absolute inset-0 border-[10px] border-black/40 rounded-full"></div>
-              {/* CD Cover Image in Center */}
-              <img
-                src={currentSong.cover}
-                alt={currentSong.title}
-                referrerPolicy="no-referrer"
-                className="w-24 h-24 rounded-full object-cover border-4 border-slate-900"
-              />
-              {/* Vinyl grooves */}
-              <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_45%,rgba(255,255,255,0.03)_46%,transparent_47%,rgba(255,255,255,0.03)_50%,transparent_51%)] pointer-events-none"></div>
-              
-              {/* Play/Pause overlay icon on hover */}
-              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-200">
-                <div className="w-12 h-12 rounded-full bg-cyan-400 text-slate-950 flex items-center justify-center shadow-lg">
-                  {isTimerActive ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-0.5" />}
-                </div>
-              </div>
-            </div>
-          </button>
-
-          {/* Mini Playback Status Floating Pill */}
-          <div className="absolute -bottom-2 px-3 py-1 bg-slate-950/95 border border-white/5 text-[10px] text-slate-300 rounded-full shadow-lg font-mono flex items-center gap-1.5 backdrop-blur max-w-[200px]">
-            <span className={`w-1.5 h-1.5 rounded-full ${isTimerActive ? 'bg-cyan-400 animate-pulse' : 'bg-slate-600'}`}></span>
-            <span className="truncate">{currentSong.title}</span>
-          </div>
-        </div>
-
-        {/* Back to Large view controller button */}
-        <button
-          onClick={() => setIsMiniCDMode && setIsMiniCDMode(false)}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 p-2 rounded-full transition-all cursor-pointer shadow-lg border border-white/5"
-          title="返回大窗口"
-        >
-          <Minimize2 className="w-4 h-4 rotate-180" />
-        </button>
-
-        {/* Quick controls underneath */}
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-          <button
-            onClick={(e) => { e.stopPropagation(); onPrev(); }}
-            className="text-slate-400 hover:text-white p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 cursor-pointer transition-all active:scale-90"
-            title="上一首"
-          >
-            <SkipBack className="w-3.5 h-3.5" />
-          </button>
-          
-          <button
-            onClick={(e) => { e.stopPropagation(); togglePlayback(); }}
-            className="text-slate-950 bg-cyan-400 hover:bg-cyan-300 p-2 rounded-full cursor-pointer transition-all active:scale-90 shadow-lg shadow-cyan-400/10"
-            title={isTimerActive ? "暂停" : "播放"}
-          >
-            {isTimerActive ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
-          </button>
-
-          <button
-            onClick={(e) => { e.stopPropagation(); onNext(); }}
-            className="text-slate-400 hover:text-white p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 cursor-pointer transition-all active:scale-90"
-            title="下一首"
-          >
-            <SkipForward className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {/* Background Playback Gesture Overlay inside Mini View */}
-        {showResumeBanner && (
-          <button
-            onClick={() => {
-              setIframeReloadKey((prev) => prev + 1);
-              setShowResumeBanner(false);
-            }}
-            className="absolute inset-0 bg-[#08080c]/95 backdrop-blur-md z-30 flex flex-col items-center justify-center p-4 text-center cursor-pointer active:scale-95 transition-transform"
-          >
-            <div className="w-12 h-12 rounded-full bg-cyan-500/10 flex items-center justify-center mb-3 text-cyan-400 border border-cyan-500/20 shadow-lg animate-bounce">
-              <Music className="w-6 h-6" />
-            </div>
-            <h4 className="text-[10px] font-bold text-slate-100 tracking-wider">
-              点击屏幕恢复声音
-            </h4>
-            <p className="mt-1 text-[9px] text-slate-400 max-w-[180px] leading-relaxed">
-              因浏览器安全限制，后台切歌需点击任意位置即可恢复
-            </p>
-          </button>
-        )}
-      </div>
-    );
-  }
-
   return (
-    <div id="active-player-card" className="bg-[#08080c] border border-white/5 rounded-3xl p-6 shadow-2xl space-y-6">
-      {/* Player Header with Mode Toggle */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-          <span className="text-xs font-mono font-bold tracking-widest text-slate-300 uppercase">
-            NOW PLAYING / 正在播放
-          </span>
-          {setIsMiniCDMode && (
-            <button
-              onClick={() => setIsMiniCDMode(true)}
-              className="flex items-center gap-1.5 text-[10px] bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 px-2.5 py-1 rounded transition-all cursor-pointer font-bold"
-              title="极简 CD 挂机模式：在当前页面变身为精美旋转 CD 播放器，极度简洁，杜绝干扰！"
-            >
-              <Minimize2 className="w-3 h-3" />
-              <span>进入极简 CD 挂机模式</span>
-            </button>
-          )}
-        </div>
-        <div className="flex items-center bg-[#050507] border border-white/5 rounded-xl p-1 relative">
-          <button
-            onClick={() => setAudioOnlyMode(false)}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              !audioOnlyMode
-                ? 'bg-gradient-to-r from-cyan-500/10 to-blue-500/10 text-cyan-400 border border-cyan-500/20 shadow-[0_0_8px_rgba(34,211,238,0.15)]'
-                : 'text-slate-400 hover:text-slate-200 border border-transparent'
-            }`}
-          >
-            <Tv className="w-3.5 h-3.5" />
-            <span>原画视频模式</span>
-          </button>
-          <button
-            onClick={() => setAudioOnlyMode(true)}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              audioOnlyMode
-                ? 'bg-gradient-to-r from-cyan-500/10 to-blue-500/10 text-cyan-400 border border-cyan-500/20 shadow-[0_0_8px_rgba(34,211,238,0.15)]'
-                : 'text-slate-400 hover:text-slate-200 border border-transparent'
-            }`}
-          >
-            <Music className="w-3.5 h-3.5" />
-            <span>精致听歌模式 (纯音频)</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Upper part: Video player iframe or Ambient vinyl CD */}
-      <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black border border-white/5 shadow-inner">
-        {/* The iframe is ALWAYS kept in the DOM. To prevent Chrome from freezing/suspending the iframe in 
-            audio-only mode, we keep it as w-full h-full but low opacity and pointer-events-none beneath the cover. */}
-        <div className={audioOnlyMode ? "absolute inset-0 pointer-events-none opacity-[0.01] z-0" : "w-full h-full relative z-10"}>
+    <div
+      id="active-player-card"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      style={
+        isMiniCDMode
+          ? {
+              transform: `translate(${dragPos.x}px, ${dragPos.y}px)`,
+              touchAction: 'none',
+            }
+          : {}
+      }
+      className={
+        isMiniCDMode
+          ? "relative flex flex-col items-center justify-center p-6 bg-[#09090e]/85 backdrop-blur-xl border border-white/10 rounded-[32px] shadow-2xl w-full max-w-[320px] aspect-square mx-auto overflow-hidden group select-none transition-shadow hover:shadow-cyan-500/10 duration-300 cursor-grab active:cursor-grabbing"
+          : "bg-[#08080c] border border-white/5 rounded-3xl p-6 shadow-2xl space-y-6"
+      }
+    >
+      {/* 1. Persistent Bilibili iframe Container (Always rendered, never unmounted!) */}
+      <div
+        key="persistent-iframe-container"
+        className={
+          isMiniCDMode
+            ? "absolute pointer-events-none opacity-[0.01] w-1 h-1 z-0"
+            : "relative aspect-video w-full rounded-2xl overflow-hidden bg-black border border-white/5 shadow-inner"
+        }
+      >
+        <div className={!isMiniCDMode && audioOnlyMode ? "absolute inset-0 pointer-events-none opacity-[0.01] z-0" : "w-full h-full relative z-10"}>
           {isTimerActive ? (
             <iframe
               key={`${currentSong.bvid}-${iframeReloadKey}`}
@@ -420,8 +335,8 @@ export default function Player({
           )}
         </div>
 
-        {/* Ambient Cover View (Pure Audio Mode) */}
-        {audioOnlyMode && isTimerActive && (
+        {/* Ambient Cover View (Pure Audio Mode) inside normal layout */}
+        {!isMiniCDMode && audioOnlyMode && isTimerActive && (
           <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-[#020204] z-10">
             {/* Blurred backdrop cover */}
             <img
@@ -469,8 +384,8 @@ export default function Player({
           </div>
         )}
 
-        {/* Paused State Overlay */}
-        {!isTimerActive && (
+        {/* Paused State Overlay inside normal layout */}
+        {!isMiniCDMode && !isTimerActive && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 backdrop-blur-md z-10 p-6 text-center transition-all duration-300">
             <div className="absolute inset-0 bg-gradient-to-tr from-cyan-950/20 to-pink-950/20 pointer-events-none"></div>
             <button
@@ -494,8 +409,8 @@ export default function Player({
           </div>
         )}
 
-        {/* Background Playback Gesture Overlay */}
-        {showResumeBanner && (
+        {/* Background Playback Gesture Overlay inside normal layout */}
+        {!isMiniCDMode && showResumeBanner && (
           <div className="absolute inset-0 bg-[#08080c]/95 backdrop-blur-md z-30 flex flex-col items-center justify-center p-6 text-center animate-pulse">
             <div className="absolute inset-0 bg-gradient-to-tr from-cyan-950/20 to-pink-950/20 pointer-events-none"></div>
             <div className="relative w-16 h-16 rounded-full bg-cyan-500/10 flex items-center justify-center mb-4 text-cyan-400 border border-cyan-500/20 shadow-lg shadow-cyan-500/10">
@@ -507,16 +422,190 @@ export default function Player({
             <p className="mt-2 text-[11px] text-slate-400 max-w-xs leading-relaxed">
               由于浏览器媒体播放安全策略，在后台切歌后需要点击一次来恢复声音。轻点网页任意位置即可瞬间启动！
             </p>
-            {!isMiniCDMode && (
-              <p className="mt-2 text-[10px] text-cyan-400 max-w-xs font-semibold bg-cyan-500/5 px-2.5 py-1.5 rounded-lg border border-cyan-500/15">
-                💡 提示：点击上方的【进入极简 CD 挂机模式】，在当前页面变身为精美旋转 CD，极致纯粹，连续自动播放不卡顿！
-              </p>
-            )}
+            <p className="mt-2 text-[10px] text-cyan-400 max-w-xs font-semibold bg-cyan-500/5 px-2.5 py-1.5 rounded-lg border border-cyan-500/15">
+              💡 提示：点击上方的【进入极简 CD 挂机模式】，在当前页面变身为精美旋转 CD，极致纯粹，连续自动播放不卡顿！
+            </p>
             <div className="mt-4 px-3 py-1 bg-cyan-500/10 border border-cyan-500/20 text-[10px] text-cyan-400 rounded-full font-mono">
               BACKGROUND_AUTOPLAY_ACTIVE
             </div>
           </div>
         )}
+      </div>
+
+      {isMiniCDMode ? (
+        /* MINI CD MODE DESIGN */
+        <>
+          {/* Ambient subtle glow */}
+          <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/10 to-pink-500/10 pointer-events-none opacity-40"></div>
+
+          {/* Outer Circular Ring */}
+          <div className="relative z-10 flex flex-col items-center justify-center select-none">
+            {/* Spinning CD Cover */}
+            <button
+              onClick={togglePlayback}
+              className="relative focus:outline-none focus:ring-0 active:scale-95 transition-transform cursor-pointer"
+              title={isTimerActive ? "点击暂停" : "点击播放"}
+            >
+              {/* Spinning Vinyl CD */}
+              <div className={`w-44 h-44 rounded-full bg-slate-950 border-[6px] border-slate-900 shadow-2xl relative flex items-center justify-center overflow-hidden ${isTimerActive && timeLeft > 0 ? 'animate-spin [animation-duration:15s]' : ''}`}>
+                <div className="absolute inset-0 border-[10px] border-black/40 rounded-full"></div>
+                {/* CD Cover Image in Center */}
+                <img
+                  src={currentSong.cover}
+                  alt={currentSong.title}
+                  referrerPolicy="no-referrer"
+                  className="w-24 h-24 rounded-full object-cover border-4 border-slate-900"
+                />
+                {/* Vinyl grooves */}
+                <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_45%,rgba(255,255,255,0.03)_46%,transparent_47%,rgba(255,255,255,0.03)_50%,transparent_51%)] pointer-events-none"></div>
+                
+                {/* Play/Pause overlay icon on hover */}
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-200">
+                  <div className="w-12 h-12 rounded-full bg-cyan-400 text-slate-950 flex items-center justify-center shadow-lg">
+                    {isTimerActive ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-0.5" />}
+                  </div>
+                </div>
+              </div>
+            </button>
+
+            {/* Mini Playback Status Floating Pill */}
+            <div className="absolute -bottom-2 px-3 py-1 bg-slate-950/95 border border-white/5 text-[10px] text-slate-300 rounded-full shadow-lg font-mono flex items-center gap-1.5 backdrop-blur max-w-[200px]">
+              <span className={`w-1.5 h-1.5 rounded-full ${isTimerActive ? 'bg-cyan-400 animate-pulse' : 'bg-slate-600'}`}></span>
+              <span className="truncate max-w-[120px]">{currentSong.title}</span>
+            </div>
+          </div>
+
+          {/* Always on Top toggle for Mini CD Mode under Tauri */}
+          {isTauri && (
+            <button
+              onClick={toggleAlwaysOnTop}
+              className={`absolute top-4 left-4 p-2 rounded-full transition-all cursor-pointer shadow-lg border ${
+                isAlwaysOnTop
+                  ? 'text-pink-400 bg-pink-500/10 border-pink-500/25 shadow-pink-500/5'
+                  : 'text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 border-white/5'
+              }`}
+              title={isAlwaysOnTop ? "取消窗口置顶" : "窗口置顶"}
+            >
+              <Pin className="w-4 h-4" />
+            </button>
+          )}
+
+          {/* Back to Large view controller button */}
+          <button
+            onClick={() => setIsMiniCDMode && setIsMiniCDMode(false)}
+            className="absolute top-4 right-4 text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 p-2 rounded-full transition-all cursor-pointer shadow-lg border border-white/5"
+            title="返回大窗口"
+          >
+            <Minimize2 className="w-4 h-4 rotate-180" />
+          </button>
+
+          {/* Quick controls underneath */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <button
+              onClick={(e) => { e.stopPropagation(); onPrev(); }}
+              className="text-slate-400 hover:text-white p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 cursor-pointer transition-all active:scale-90"
+              title="上一首"
+            >
+              <SkipBack className="w-3.5 h-3.5" />
+            </button>
+            
+            <button
+              onClick={(e) => { e.stopPropagation(); togglePlayback(); }}
+              className="text-slate-950 bg-cyan-400 hover:bg-cyan-300 p-2 rounded-full cursor-pointer transition-all active:scale-90 shadow-lg shadow-cyan-400/10"
+              title={isTimerActive ? "暂停" : "播放"}
+            >
+              {isTimerActive ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
+            </button>
+
+            <button
+              onClick={(e) => { e.stopPropagation(); onNext(); }}
+              className="text-slate-400 hover:text-white p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 cursor-pointer transition-all active:scale-90"
+              title="下一首"
+            >
+              <SkipForward className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Background Playback Gesture Overlay inside Mini View */}
+          {showResumeBanner && (
+            <button
+              onClick={() => {
+                setIframeReloadKey((prev) => prev + 1);
+                setShowResumeBanner(false);
+              }}
+              className="absolute inset-0 bg-[#08080c]/95 backdrop-blur-md z-30 flex flex-col items-center justify-center p-4 text-center cursor-pointer active:scale-95 transition-transform rounded-[32px]"
+            >
+              <div className="w-12 h-12 rounded-full bg-cyan-500/10 flex items-center justify-center mb-3 text-cyan-400 border border-cyan-500/20 shadow-lg animate-bounce">
+                <Music className="w-6 h-6" />
+              </div>
+              <h4 className="text-[10px] font-bold text-slate-100 tracking-wider">
+                点击屏幕恢复声音
+              </h4>
+              <p className="mt-1 text-[9px] text-slate-400 max-w-[180px] leading-relaxed">
+                因浏览器安全限制，后台切歌需点击任意位置即可恢复
+              </p>
+            </button>
+          )}
+        </>
+      ) : (
+        /* NORMAL LARGE MODE HEADER */
+        <>
+      {/* Player Header with Mode Toggle */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+          <span className="text-xs font-mono font-bold tracking-widest text-slate-300 uppercase">
+            NOW PLAYING / 正在播放
+          </span>
+          {setIsMiniCDMode && (
+            <button
+              onClick={() => setIsMiniCDMode(true)}
+              className="flex items-center gap-1.5 text-[10px] bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 px-2.5 py-1 rounded transition-all cursor-pointer font-bold"
+              title="极简 CD 挂机模式：在当前页面变身为精美旋转 CD 播放器，极度简洁，杜绝干扰！"
+            >
+              <Minimize2 className="w-3 h-3" />
+              <span>进入极简 CD 挂机模式</span>
+            </button>
+          )}
+          {isTauri && (
+            <button
+              onClick={toggleAlwaysOnTop}
+              className={`flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded transition-all cursor-pointer font-bold ${
+                isAlwaysOnTop
+                  ? 'bg-pink-500/20 text-pink-400 border border-pink-500/40 shadow-[0_0_8px_rgba(236,72,153,0.2)]'
+                  : 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10'
+              }`}
+              title="窗口置顶：将播放器窗口保持在所有其他窗口的最前端，方便在做其他事时看歌单！"
+            >
+              <Pin className="w-3 h-3" />
+              <span>{isAlwaysOnTop ? '已置顶' : '窗口置顶'}</span>
+            </button>
+          )}
+        </div>
+        <div className="flex items-center bg-[#050507] border border-white/5 rounded-xl p-1 relative">
+          <button
+            onClick={() => setAudioOnlyMode(false)}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              !audioOnlyMode
+                ? 'bg-gradient-to-r from-cyan-500/10 to-blue-500/10 text-cyan-400 border border-cyan-500/20 shadow-[0_0_8px_rgba(34,211,238,0.15)]'
+                : 'text-slate-400 hover:text-slate-200 border border-transparent'
+            }`}
+          >
+            <Tv className="w-3.5 h-3.5" />
+            <span>原画视频模式</span>
+          </button>
+          <button
+            onClick={() => setAudioOnlyMode(true)}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              audioOnlyMode
+                ? 'bg-gradient-to-r from-cyan-500/10 to-blue-500/10 text-cyan-400 border border-cyan-500/20 shadow-[0_0_8px_rgba(34,211,238,0.15)]'
+                : 'text-slate-400 hover:text-slate-200 border border-transparent'
+            }`}
+          >
+            <Music className="w-3.5 h-3.5" />
+            <span>精致听歌模式 (纯音频)</span>
+          </button>
+        </div>
       </div>
 
       {/* Playback Progress Indicator (Local Timer) */}
@@ -737,6 +826,8 @@ export default function Player({
           </div>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

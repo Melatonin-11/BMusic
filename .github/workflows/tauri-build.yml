@@ -1,0 +1,46 @@
+name: Build Desktop Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'windows-latest'
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Frontend Dependencies
+        run: npm install
+
+      - name: Build Frontend and Compile Tauri Executable
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'BiliRandomizer v__VERSION__'
+          releaseBody: '🎉 BiliRandomizer B站歌单融合随机播放器 Windows 桌面版。\n\n### 📦 软件特点\n- **独立窗口运行**：脱离浏览器，轻量高效。\n- **极简旋转 CD 挂机**：完美的音乐挂机体验。\n- **窗口置顶 (Always on Top)**：在写代码或玩游戏时将播放器钉在最上层。\n- **无感多端同步**：通过 LocalStorage 同步最新播放进度。\n\n### 🚀 安装说明\n下载下方 Assets 中的 `.exe` 或 `.msi` 安装包，双击运行即可！'
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
