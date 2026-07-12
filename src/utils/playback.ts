@@ -6,7 +6,7 @@ export function pickNextSong(
   mode: 'pure' | 'balanced',
   random: () => number = Math.random,
 ): Song | null {
-  const active = playlists.filter((playlist) => playlist.isLoaded && playlist.songs.length > 0);
+  const active = playlists.filter((playlist) => playlist.isActive !== false && playlist.isLoaded && playlist.songs.length > 0);
   const allSongs = active.flatMap((playlist) => playlist.songs);
   if (allSongs.length === 0) return null;
   if (allSongs.length === 1) return allSongs[0];

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { PlaylistConfig, Song } from '../types';
 import { Play, RotateCw, Trash2, ShieldAlert, Key, HelpCircle, FolderHeart, Plus, CheckCircle2, AlertCircle, Eye, EyeOff, Copy, Check, Edit2, X } from 'lucide-react';
-import { parsePlaylistIds } from '../utils/playlistImport';
+import { encodePlaylistBackup, parsePlaylistBackup } from '../utils/playlistImport';
 import { remainingPageBatches } from '../utils/pagination';
 
 interface PlaylistConfigProps {
@@ -54,21 +54,13 @@ export default function PlaylistConfigComponent({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState<string>('');
 
-  // Generate backup code automatically when playlists change (super compact base-36)
+  // Backup IDs, custom names and active/inactive selection.
   const currentBackupCode = useMemo(() => {
-    try {
-      if (playlists.length === 0) return '';
-      // Map Bilibili numeric IDs to uppercase base36 strings and join with a hyphen
-      return playlists
-        .map(p => {
-          const num = Number(p.id);
-          if (isNaN(num)) return p.id.toUpperCase(); // fallback if not numeric
-          return num.toString(36).toUpperCase();
-        })
-        .join('-');
-    } catch (e) {
-      return '';
-    }
+    return encodePlaylistBackup(playlists.map((playlist) => ({
+      id: playlist.id,
+      name: playlist.name,
+      isActive: playlist.isActive !== false,
+    })));
   }, [playlists]);
 
   const handleCopyBackup = () => {
@@ -85,32 +77,41 @@ export default function PlaylistConfigComponent({
       return;
     }
     try {
-      const importedIds = parsePlaylistIds(code);
+      const importedItems = parsePlaylistBackup(code);
 
-      if (importedIds.length > 0) {
+      if (importedItems.length > 0) {
         // Create new playlist configs for the imported IDs
         // Preserve any existing playlists and merge unique ones
-        const existingMap = new Map(playlists.map(p => [p.id, p]));
+        const existingMap = new Map(playlists.map((playlist, index) => [playlist.id, index]));
         const mergedPlaylists = [...playlists];
 
         let addedCount = 0;
-        importedIds.forEach(id => {
-          if (!existingMap.has(id)) {
+        importedItems.forEach((item) => {
+          const existingIndex = existingMap.get(item.id);
+          if (existingIndex === undefined) {
             mergedPlaylists.push({
-              id,
-              name: `已导入收藏夹 (${id})`,
+              id: item.id,
+              name: item.name || `已导入收藏夹 (${item.id})`,
               videoCount: 0,
               isLoaded: false,
+              isActive: item.isActive !== false,
               songs: [],
             });
             addedCount++;
+          } else {
+            const existing = mergedPlaylists[existingIndex];
+            mergedPlaylists[existingIndex] = {
+              ...existing,
+              name: item.name || existing.name,
+              isActive: item.isActive !== false,
+            };
           }
         });
 
         setPlaylists(mergedPlaylists);
         setImportStatus({
           status: 'success',
-          msg: `恢复成功！成功读取到 ${importedIds.length} 个收藏夹（其中 ${addedCount} 个为新加入，请点击“同步数据”拉取内容）。`
+          msg: `恢复成功！读取到 ${importedItems.length} 个收藏夹及其命名（其中 ${addedCount} 个为新加入，请点击“同步数据”拉取内容）。`
         });
         setImportText('');
         setTimeout(() => setImportStatus({ status: 'idle' }), 5000);
@@ -184,6 +185,7 @@ export default function PlaylistConfigComponent({
       name: newCustomName.trim() || `未命名收藏夹 (${id})`,
       videoCount: 0,
       isLoaded: false,
+      isActive: true,
       songs: [],
     };
 
@@ -199,6 +201,12 @@ export default function PlaylistConfigComponent({
     delete newLoading[id];
     setLoadingStates(newLoading);
     setConfirmDeleteId(null);
+  };
+
+  const togglePlaylistActive = (id: string) => {
+    setPlaylists(playlists.map((playlist) => (
+      playlist.id === id ? { ...playlist, isActive: playlist.isActive === false } : playlist
+    )));
   };
 
   const handleRename = (id: string, newName: string) => {
@@ -674,6 +682,15 @@ export default function PlaylistConfigComponent({
                     )}
 
                     <div className="flex items-center gap-2 justify-end self-end sm:self-auto">
+                      <label className="flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-slate-300 bg-[#08080c] border border-white/5 rounded-lg cursor-pointer select-none whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={playlist.isActive !== false}
+                          onChange={() => togglePlaylistActive(playlist.id)}
+                          className="accent-cyan-500"
+                        />
+                        加入融合曲库
+                      </label>
                       <button
                         onClick={() => syncPlaylist(playlist.id)}
                         disabled={loading && loading.status !== 'done' && loading.status !== 'error'}
@@ -721,14 +738,14 @@ export default function PlaylistConfigComponent({
         </h3>
         
         <p className="text-xs text-slate-400 leading-relaxed">
-          提示：为避免数据冗长，本系统采用<strong>极简压缩算法</strong>，将海量曲库配置压缩至极其精简的 <strong>12-16 位短代码（由歌单ID转换）</strong>。您只需复制并保存短代码，在任何新浏览器/设备中一键还原并重新同步，即可 100% 恢复整个华丽曲库！
+          新版备份代码会保存收藏夹 ID、您的自定义命名以及是否加入融合曲库。因为包含名称，代码会比旧版纯 ID 短代码稍长；旧版短代码仍可继续导入。
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
           {/* Column 1: Export */}
           <div className="space-y-3 bg-[#050507] p-4 rounded-xl border border-white/5">
             <h4 className="text-xs font-bold text-slate-200 font-mono uppercase tracking-wide flex items-center justify-between">
-              <span>📤 极简备份短代码 (当前数值)</span>
+              <span>📤 曲库配置备份代码</span>
               {currentBackupCode && (
                 <button
                   onClick={handleCopyBackup}
@@ -752,7 +769,7 @@ export default function PlaylistConfigComponent({
                 暂无配置，请先添加歌单并同步数据
               </div>
             )}
-            <p className="text-[10px] text-slate-500 font-mono">点击文本框可自动全选。格式极度精简，比以前更好备份和管理！</p>
+            <p className="text-[10px] text-slate-500 font-mono">点击文本框可自动全选；包含收藏夹命名和融合曲库开关。</p>
           </div>
 
           {/* Column 2: Import */}

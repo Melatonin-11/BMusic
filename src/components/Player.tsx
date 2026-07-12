@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Song, PlaybackHistoryItem } from '../types';
-import { Play, Pause, SkipForward, SkipBack, ExternalLink, RefreshCw, Volume2, Clock, Hourglass, Plus, Minus, Info, Music, Tv, HelpCircle, Minimize2, Pin } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, ExternalLink, RefreshCw, Volume2, Clock, Hourglass, Plus, Minus, Info, Music, Tv, Maximize2, Disc3, VideoOff } from 'lucide-react';
 
 interface PlayerProps {
   currentSong: Song | null;
@@ -41,28 +41,6 @@ export default function Player({
 }: PlayerProps) {
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [isTimerActive, setIsTimerActive] = useState<boolean>(true);
-  const [isTauri, setIsTauri] = useState<boolean>(false);
-  const [isAlwaysOnTop, setIsAlwaysOnTop] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined) {
-      setIsTauri(true);
-    }
-  }, []);
-
-  const toggleAlwaysOnTop = async () => {
-    if (isTauri) {
-      try {
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        const win = getCurrentWindow();
-        const nextState = !isAlwaysOnTop;
-        await win.setAlwaysOnTop(nextState);
-        setIsAlwaysOnTop(nextState);
-      } catch (err) {
-        console.error('Failed to set always on top:', err);
-      }
-    }
-  };
 
   const [iframeStartAt, setIframeStartAt] = useState<number>(0);
   const [iframeReloadKey, setIframeReloadKey] = useState<number>(0);
@@ -447,10 +425,10 @@ export default function Player({
           {/* Back to Large view controller button */}
           <button
             onClick={() => setIsMiniCDMode && setIsMiniCDMode(false)}
-            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-white bg-black/60 hover:bg-black/80 p-2 rounded-full transition-all cursor-pointer shadow-lg border border-white/10"
+            className="absolute top-9 right-9 opacity-0 group-hover:opacity-100 text-slate-200 hover:text-white bg-black/70 hover:bg-black/90 p-2 rounded-full transition-all cursor-pointer shadow-lg border border-white/15 z-20"
             title="返回主窗口"
           >
-            <Minimize2 className="w-4 h-4 rotate-180" />
+            <Maximize2 className="w-4 h-4" />
           </button>
 
           {/* Background Playback Gesture Overlay inside Mini View */}
@@ -484,32 +462,24 @@ export default function Player({
           <span className="text-xs font-mono font-bold tracking-widest text-slate-300 uppercase">
             NOW PLAYING / 正在播放
           </span>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {setIsMiniCDMode && (
             <button
               onClick={() => setIsMiniCDMode(true)}
-              className="flex items-center gap-1.5 text-[10px] bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 px-2.5 py-1 rounded transition-all cursor-pointer font-bold"
-              title="极简 CD 挂机模式：在当前页面变身为精美旋转 CD 播放器，极度简洁，杜绝干扰！"
+              className="group/cd flex items-center gap-2.5 px-3.5 py-2 bg-gradient-to-r from-cyan-500/15 to-blue-500/10 hover:from-cyan-500/25 hover:to-blue-500/20 text-cyan-300 border border-cyan-500/30 hover:border-cyan-400/55 rounded-xl transition-all cursor-pointer shadow-[0_0_16px_rgba(34,211,238,0.08)]"
+              title="将播放器收成桌面悬浮唱片"
             >
-              <Minimize2 className="w-3 h-3" />
-              <span>进入极简 CD 挂机模式</span>
+              <span className="w-8 h-8 rounded-full bg-cyan-400/15 border border-cyan-400/25 flex items-center justify-center group-hover/cd:rotate-45 transition-transform duration-300">
+                <Disc3 className="w-4.5 h-4.5" />
+              </span>
+              <span className="text-left leading-tight">
+                <span className="block text-xs font-bold">极简 CD 悬浮窗</span>
+                <span className="block text-[9px] text-cyan-400/65 mt-0.5">收起主界面，仅保留唱片</span>
+              </span>
             </button>
           )}
-          {isTauri && (
-            <button
-              onClick={toggleAlwaysOnTop}
-              className={`flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded transition-all cursor-pointer font-bold ${
-                isAlwaysOnTop
-                  ? 'bg-pink-500/20 text-pink-400 border border-pink-500/40 shadow-[0_0_8px_rgba(236,72,153,0.2)]'
-                  : 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10'
-              }`}
-              title="窗口置顶：将播放器窗口保持在所有其他窗口的最前端，方便在做其他事时看歌单！"
-            >
-              <Pin className="w-3 h-3" />
-              <span>{isAlwaysOnTop ? '已置顶' : '窗口置顶'}</span>
-            </button>
-          )}
-        </div>
-        <div className="flex items-center bg-[#050507] border border-white/5 rounded-xl p-1 relative">
+          <div className="flex items-center bg-[#050507] border border-white/5 rounded-xl p-1 relative">
           <button
             onClick={() => setAudioOnlyMode(false)}
             className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -519,7 +489,7 @@ export default function Player({
             }`}
           >
             <Tv className="w-3.5 h-3.5" />
-            <span>原画视频模式</span>
+            <span>开启视频</span>
           </button>
           <button
             onClick={() => setAudioOnlyMode(true)}
@@ -529,9 +499,10 @@ export default function Player({
                 : 'text-slate-400 hover:text-slate-200 border border-transparent'
             }`}
           >
-            <Music className="w-3.5 h-3.5" />
-            <span>精致听歌模式 (纯音频)</span>
+            <VideoOff className="w-3.5 h-3.5" />
+            <span>关闭视频</span>
           </button>
+          </div>
         </div>
       </div>
 
@@ -540,7 +511,7 @@ export default function Player({
         <div className="flex items-center justify-between text-xs font-mono">
           <span className="flex items-center gap-1.5 text-slate-450">
             <Clock className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-            <span>PLAYBACK TIMELINE (SLIDE TO ALIGN / 拖动对齐B站进度)</span>
+            <span>播放时间轴 PLAYBACK TIMELINE（拖动对齐 B 站进度）</span>
           </span>
           <span className="text-slate-300 font-semibold flex items-center gap-1">
             <Hourglass className="w-3.5 h-3.5 text-pink-400" />
@@ -727,32 +698,6 @@ export default function Player({
         </div>
       </div>
 
-      {/* Background Playback Notice / Guide */}
-      <div className="border-t border-white/5 pt-4">
-        <div className="bg-cyan-950/10 border border-cyan-500/15 rounded-2xl p-4 flex gap-3 items-start">
-          <HelpCircle className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
-          <div className="space-y-1 text-xs">
-            <h4 className="font-bold text-slate-200 flex items-center gap-1">
-              <span>💡 浏览器后台完美播放/切歌技巧</span>
-              <span className="text-[10px] bg-cyan-500/20 text-cyan-300 font-mono px-1.5 py-0.5 rounded uppercase">Recommended / 推荐</span>
-            </h4>
-            <p className="text-slate-400 leading-relaxed">
-              现代浏览器（如 Chrome, Edge, Safari）有严格的媒体安全策略：当网页在后台（切到其他标签页或最小化）时，会禁止新加载的 B 站播放器自动播放声音，从而导致切歌时卡住。
-            </p>
-            <div className="pt-1.5 text-slate-300 flex flex-col gap-1">
-              <p className="font-semibold text-cyan-450">
-                只需简单一步即可彻底解决后台自动连续播放：
-              </p>
-              <div className="pl-4 border-l border-cyan-500/30 space-y-1 font-mono text-slate-300 text-[11px]">
-                <div>1. 点击浏览器地址栏左侧的 <strong className="text-cyan-400">“锁头 / 调节”</strong> 图标；</div>
-                <div>2. 点击 <strong className="text-cyan-400">“网站设置 (Site Settings)”</strong>；</div>
-                <div>3. 找到 <strong className="text-cyan-400">“声音 (Sound)”</strong> 权限，将其修改为 <strong className="text-cyan-400">“允许 (Allow)”</strong>；</div>
-                <div>4. 返回此页面刷新即可。即使切换标签或最小化，系统也能完美连续播歌！</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
       </>
       )}
     </div>

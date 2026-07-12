@@ -41,7 +41,7 @@ export default function App() {
 
   const [hideDanmaku, setHideDanmaku] = useState<boolean>(() => {
     const saved = localStorage.getItem('bili_setting_hide_danmaku');
-    return saved === 'true'; // default false
+    return saved === null ? true : saved === 'true'; // default true
   });
 
   const [highQuality, setHighQuality] = useState<boolean>(() => {
@@ -171,7 +171,7 @@ export default function App() {
   const allActiveSongs = useMemo(() => {
     const songs: Song[] = [];
     playlists.forEach((p) => {
-      if (p.isLoaded && p.songs.length > 0) {
+      if (p.isActive !== false && p.isLoaded && p.songs.length > 0) {
         songs.push(...p.songs);
       }
     });
@@ -510,7 +510,7 @@ export default function App() {
 
         {activeTab === 'songlist' && (
           <SongList
-            playlists={playlists.filter((p) => p.isLoaded)}
+            playlists={playlists.filter((p) => p.isActive !== false && p.isLoaded)}
             onPlaySong={handlePlaySong}
             currentSong={currentSong}
           />
@@ -527,7 +527,7 @@ export default function App() {
 
         {activeTab === 'stats' && (
           <StatsDashboard
-            playlists={playlists}
+            playlists={playlists.filter((p) => p.isActive !== false)}
             history={history}
             onPlaySongByBvid={handlePlaySongByBvid}
             clearHistory={clearHistory}

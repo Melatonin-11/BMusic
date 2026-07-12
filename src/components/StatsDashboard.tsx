@@ -71,7 +71,7 @@ export default function StatsDashboard({
             <Library className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[10px] text-slate-500 block font-mono uppercase tracking-wider">TOTAL_TRACKS</span>
+            <span className="text-[10px] text-slate-500 block font-mono uppercase tracking-wider">总歌曲数 TOTAL_TRACKS</span>
             <span className="text-xl font-black text-slate-100 font-mono mt-0.5 block">
               {stats.totalSongs} <span className="text-[10px] font-normal text-slate-500">PCS</span>
             </span>
@@ -84,7 +84,7 @@ export default function StatsDashboard({
             <Clock className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[10px] text-slate-500 block font-mono uppercase tracking-wider">TOTAL_HOURS</span>
+            <span className="text-[10px] text-slate-500 block font-mono uppercase tracking-wider">总时长 TOTAL_HOURS</span>
             <span className="text-xl font-black text-slate-100 font-mono mt-0.5 block">
               {stats.totalDurationHours} <span className="text-[10px] font-normal text-slate-500">HRS</span>
             </span>
@@ -97,7 +97,7 @@ export default function StatsDashboard({
             <PlayCircle className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[10px] text-slate-500 block font-mono uppercase tracking-wider">AVG_DURATION</span>
+            <span className="text-[10px] text-slate-500 block font-mono uppercase tracking-wider">平均时长 AVG_DURATION</span>
             <span className="text-xl font-black text-slate-100 font-mono mt-0.5 block">
               {stats.averageDurationMinutes} <span className="text-[10px] font-normal text-slate-500">MIN</span>
             </span>
@@ -110,7 +110,7 @@ export default function StatsDashboard({
             <CheckSquare className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[10px] text-slate-500 block font-mono uppercase tracking-wider">ACTIVE_FOLDERS</span>
+            <span className="text-[10px] text-slate-500 block font-mono uppercase tracking-wider">启用收藏夹 ACTIVE_FOLDERS</span>
             <span className="text-xl font-black text-slate-100 font-mono mt-0.5 block">
               {playlists.filter((p) => p.isLoaded).length} <span className="text-[10px] text-slate-550">/ {playlists.length}</span>
             </span>

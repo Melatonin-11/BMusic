@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { pickNextSong } from '../src/utils/playback.ts';
-import { parsePlaylistIds } from '../src/utils/playlistImport.ts';
+import { encodePlaylistBackup, parsePlaylistBackup, parsePlaylistIds } from '../src/utils/playlistImport.ts';
 import { remainingPageBatches } from '../src/utils/pagination.ts';
 import type { PlaylistConfig, Song } from '../src/types.ts';
 
@@ -35,6 +35,17 @@ test('playlist import parses decimal/base36 IDs and removes duplicates', () => {
 test('playlist import restores legacy base64 JSON', () => {
   const backup = btoa(encodeURIComponent(JSON.stringify([{ id: '123' }, { id: 456 }])));
   assert.deepEqual(parsePlaylistIds(backup), ['123', '456']);
+});
+
+test('new backup preserves custom names and active selection', () => {
+  const code = encodePlaylistBackup([
+    { id: '123', name: '通勤歌单', isActive: true },
+    { id: '456', name: '周末再听', isActive: false },
+  ]);
+  assert.deepEqual(parsePlaylistBackup(code), [
+    { id: '123', name: '通勤歌单', isActive: true },
+    { id: '456', name: '周末再听', isActive: false },
+  ]);
 });
 
 test('pagination batches pages after the first page', () => {

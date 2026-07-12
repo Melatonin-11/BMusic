@@ -19,6 +19,7 @@ export interface PlaylistConfig {
   cover?: string;
   videoCount: number;
   isLoaded: boolean;
+  isActive?: boolean; // included in the current fused library; defaults to true
   songs: Song[];
 }
 
