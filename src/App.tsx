@@ -151,14 +151,31 @@ export default function App() {
         const miniSize = 270;
         const centerX = position.x / scaleFactor + size.width / scaleFactor / 2;
         const centerY = position.y / scaleFactor + size.height / scaleFactor / 2;
+        let miniPosition = { x: centerX - miniSize / 2, y: centerY - miniSize / 2 };
+        try {
+          const saved = JSON.parse(localStorage.getItem('bili_mini_window_position') || 'null');
+          if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
+            miniPosition = { x: saved.x, y: saved.y };
+          }
+        } catch {
+          // Ignore malformed data and use the main-window center.
+        }
         await appWindow.setDecorations(false);
         await appWindow.setShadow(false);
         await appWindow.setResizable(false);
         await appWindow.setSize(new LogicalSize(miniSize, miniSize));
-        await appWindow.setPosition(new LogicalPosition(centerX - miniSize / 2, centerY - miniSize / 2));
+        await appWindow.setPosition(new LogicalPosition(miniPosition.x, miniPosition.y));
         await appWindow.setAlwaysOnTop(true);
       } else if (normalWindowRef.current) {
         const normal = normalWindowRef.current;
+        const [miniPosition, scaleFactor] = await Promise.all([
+          appWindow.outerPosition(),
+          appWindow.scaleFactor(),
+        ]);
+        localStorage.setItem('bili_mini_window_position', JSON.stringify({
+          x: miniPosition.x / scaleFactor,
+          y: miniPosition.y / scaleFactor,
+        }));
         await appWindow.setDecorations(false);
         await appWindow.setShadow(true);
         await appWindow.setResizable(true);
