@@ -12,6 +12,10 @@ export default function App() {
   const [isMiniCDMode, setIsMiniCDMode] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'player' | 'songlist' | 'playlists' | 'stats'>('player');
   const [showSplash, setShowSplash] = useState<boolean>(true);
+  const [usageSeconds, setUsageSeconds] = useState<number>(() => {
+    const saved = Number(localStorage.getItem('bili_total_usage_seconds'));
+    return Number.isFinite(saved) && saved > 0 ? Math.floor(saved) : 0;
+  });
   const normalWindowRef = useRef<{ size: { width: number; height: number }; position: { x: number; y: number } } | null>(null);
 
   // Core state loaded from LocalStorage
@@ -69,6 +73,17 @@ export default function App() {
     // Remove credentials left by older versions; credentials now live in Windows Credential Manager.
     localStorage.removeItem('bili_sessdata');
   }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setUsageSeconds((previous) => previous + 1);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('bili_total_usage_seconds', String(usageSeconds));
+  }, [usageSeconds]);
 
   useEffect(() => {
     localStorage.setItem('bili_playlists', JSON.stringify(playlists));
@@ -374,7 +389,7 @@ export default function App() {
                   <h1 className="text-base font-bold tracking-[0.15em] text-white font-mono uppercase">
                     BILI-RANDOMIZER
                   </h1>
-                  <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded font-mono text-cyan-400">v1.05</span>
+                  <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded font-mono text-cyan-400">v1.06</span>
                 </div>
                 <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-0.5">
                   突破单收藏夹 1000 上限 · 跨歌单无缝随机
@@ -483,6 +498,7 @@ export default function App() {
               setAudioOnlyMode={setAudioOnlyMode}
               isMiniCDMode={isMiniCDMode}
               setIsMiniCDMode={setIsMiniCDMode}
+              usageSeconds={usageSeconds}
             />
           </div>
 

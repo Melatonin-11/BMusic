@@ -19,6 +19,7 @@ interface PlayerProps {
   setAudioOnlyMode: (val: boolean) => void;
   isMiniCDMode?: boolean;
   setIsMiniCDMode?: (val: boolean) => void;
+  usageSeconds: number;
 }
 
 export default function Player({
@@ -38,6 +39,7 @@ export default function Player({
   setAudioOnlyMode,
   isMiniCDMode,
   setIsMiniCDMode,
+  usageSeconds,
 }: PlayerProps) {
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [isTimerActive, setIsTimerActive] = useState<boolean>(true);
@@ -174,6 +176,15 @@ export default function Player({
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const formatUsageTime = (seconds: number) => {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (days > 0) return `${days} 天 ${hours} 小时`;
+    if (hours > 0) return `${hours} 小时 ${minutes} 分钟`;
+    return `${minutes} 分钟`;
   };
 
   // Adjust timer manually (buffer or buffering)
@@ -461,6 +472,13 @@ export default function Player({
           <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
           <span className="text-xs font-mono font-bold tracking-widest text-slate-300 uppercase">
             NOW PLAYING / 正在播放
+          </span>
+          <span
+            className="ml-1 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-500/[0.08] border border-violet-400/15 text-[10px] text-violet-300 font-mono"
+            title="应用运行时会自动累计，并保存在本机"
+          >
+            <Clock className="w-3.5 h-3.5" />
+            累计使用 {formatUsageTime(usageSeconds)}
           </span>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
