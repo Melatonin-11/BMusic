@@ -16,7 +16,7 @@ export default function App() {
     const saved = Number(localStorage.getItem('bili_total_usage_seconds'));
     return Number.isFinite(saved) && saved > 0 ? Math.floor(saved) : 0;
   });
-  const normalWindowRef = useRef<{ size: { width: number; height: number }; position: { x: number; y: number } } | null>(null);
+  const normalWindowRef = useRef<{ size: { width: number; height: number } } | null>(null);
 
   // Core state loaded from LocalStorage
   const [playlists, setPlaylists] = useState<PlaylistConfig[]>(() => {
@@ -145,7 +145,6 @@ export default function App() {
         if (cancelled) return;
         normalWindowRef.current = {
           size: { width: size.width / scaleFactor, height: size.height / scaleFactor },
-          position: { x: position.x / scaleFactor, y: position.y / scaleFactor },
         };
         // Extra transparent margin prevents the record shadow from being clipped by the WebView edge.
         const miniSize = 270;
@@ -180,7 +179,7 @@ export default function App() {
         await appWindow.setShadow(true);
         await appWindow.setResizable(true);
         await appWindow.setSize(new LogicalSize(normal.size.width, normal.size.height));
-        await appWindow.setPosition(new LogicalPosition(normal.position.x, normal.position.y));
+        await appWindow.center();
         await appWindow.setAlwaysOnTop(false);
         normalWindowRef.current = null;
       }
