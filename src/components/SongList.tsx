@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Song } from '../types';
-import { Play, Search, Folder, User, Music, HelpCircle, ArrowUpDown, Shuffle } from 'lucide-react';
+import { Play, Search, Folder, User, Music, ArrowUpDown, Shuffle } from 'lucide-react';
 
 interface SongListProps {
   playlists: { id: string; name: string; songs: Song[] }[];

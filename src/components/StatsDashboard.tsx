@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
-import { Song, PlaylistConfig, PlaybackHistoryItem } from '../types';
+import { PlaylistConfig, PlaybackHistoryItem } from '../types';
 import { BarChart3, Clock, PlayCircle, Library, Award, History, Calendar, CheckSquare } from 'lucide-react';
+import { getActiveUniquePlaylists } from '../utils/playback';
 
 interface StatsDashboardProps {
   playlists: PlaylistConfig[];
@@ -22,7 +23,7 @@ export default function StatsDashboard({
     const authorCounts: Record<string, { count: number; avatar?: string }> = {};
     const playlistCounts: Record<string, { count: number; name: string }> = {};
 
-    playlists.forEach((p) => {
+    getActiveUniquePlaylists(playlists).forEach((p) => {
       totalSongs += p.songs.length;
       playlistCounts[p.id] = { count: p.songs.length, name: p.name };
 

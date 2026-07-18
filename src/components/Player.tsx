@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Song, PlaybackHistoryItem } from '../types';
-import { Play, Pause, SkipForward, SkipBack, ExternalLink, RefreshCw, Volume2, Clock, Hourglass, Plus, Minus, Info, Music, Tv, Maximize2, Disc3, VideoOff } from 'lucide-react';
+import { Song } from '../types';
+import { Play, Pause, SkipForward, SkipBack, ExternalLink, Volume2, Clock, Hourglass, Plus, Minus, Info, Music, Tv, Maximize2, Disc3, VideoOff } from 'lucide-react';
 
 interface PlayerProps {
   currentSong: Song | null;
   onNext: () => void;
   onPrev: () => void;
-  history: PlaybackHistoryItem[];
+  canGoPrevious: boolean;
   autoNext: boolean;
   setAutoNext: (val: boolean) => void;
   countdownBuffer: number;
@@ -26,7 +26,7 @@ export default function Player({
   currentSong,
   onNext,
   onPrev,
-  history,
+  canGoPrevious,
   autoNext,
   setAutoNext,
   countdownBuffer,
@@ -409,7 +409,8 @@ export default function Player({
               <div className="absolute inset-0 rounded-full bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity duration-200">
                 <button
                   onClick={(e) => { e.stopPropagation(); onPrev(); }}
-                  className="w-9 h-9 rounded-full bg-black/65 border border-white/15 text-white/85 hover:text-white hover:bg-black/85 flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-lg"
+                  disabled={!canGoPrevious}
+                  className="w-9 h-9 rounded-full bg-black/65 border border-white/15 text-white/85 hover:text-white hover:bg-black/85 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-lg"
                   title="上一首"
                 >
                   <SkipBack className="w-4 h-4 fill-current" />
@@ -625,7 +626,7 @@ export default function Player({
           <div className="flex items-center gap-1.5 bg-[#050507] border border-white/5 rounded-xl p-1">
             <button
               onClick={onPrev}
-              disabled={history.length <= 1}
+              disabled={!canGoPrevious}
               className="p-2 text-slate-400 hover:text-slate-200 disabled:opacity-20 disabled:pointer-events-none transition-colors cursor-pointer"
               title="上一首 (历史)"
             >

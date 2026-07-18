@@ -21,9 +21,10 @@ jobs:
         run: npm ci
       - name: Build and publish desktop application
         id: tauri_build
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
           tagName: v__VERSION__
           releaseName: BiliRandomizer v__VERSION__
@@ -40,6 +41,7 @@ jobs:
             - 极简 CD 悬浮窗：收起主界面，只在桌面保留旋转唱片
             - 收藏夹配置备份与恢复，可保留自定义名称和启用状态
             - SESSDATA 使用 Windows 凭据管理器保存
+            - 支持在应用内自动下载、验签、安装新版本并重启
 
             ### 下载说明
 
@@ -50,6 +52,7 @@ jobs:
             下载下方 Assets 中适合自己的版本即可。首次使用时，请添加收藏夹并同步数据。
           releaseDraft: false
           prerelease: false
+          updaterJsonPreferNsis: true
       - name: Package portable version
         shell: pwsh
         env:

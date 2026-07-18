@@ -1,17 +1,29 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { check, type Update } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
+import packageJson from '../package.json';
 import PlaylistConfigComponent from './components/PlaylistConfig';
 import Player from './components/Player';
 import SongList from './components/SongList';
 import StatsDashboard from './components/StatsDashboard';
 import { PlaylistConfig, Song, PlaybackHistoryItem } from './types';
-import { Music, FolderHeart, BarChart3, Radio, HelpCircle, AlertCircle, Shuffle, Minus, Square, X } from 'lucide-react';
-import { pickNextSong } from './utils/playback';
+import { Music, FolderHeart, BarChart3, Radio, HelpCircle, AlertCircle, Shuffle, Minus, Square, X, BellRing, Download } from 'lucide-react';
+import { getActiveUniqueSongs, pickNextSong } from './utils/playback';
+import { buildPlaybackTrail, findPreviousPlayableSong } from './utils/playbackHistory';
+import type { PlaybackTrailItem } from './utils/playbackHistory';
+import { hasStorageValue, loadPlaylistCache, readJsonStorage, removeStorageValue, savePlaylistCache } from './utils/storage';
 
 export default function App() {
   const [isMiniCDMode, setIsMiniCDMode] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'player' | 'songlist' | 'playlists' | 'stats'>('player');
   const [showSplash, setShowSplash] = useState<boolean>(true);
+  const [availableUpdate, setAvailableUpdate] = useState<Update | null>(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'downloading' | 'installing' | 'restarting' | 'error'>('idle');
+  const [updateProgress, setUpdateProgress] = useState(0);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const updateCheckStartedRef = useRef(false);
   const [usageSeconds, setUsageSeconds] = useState<number>(() => {
     const saved = Number(localStorage.getItem('bili_total_usage_seconds'));
     return Number.isFinite(saved) && saved > 0 ? Math.floor(saved) : 0;
@@ -19,18 +31,21 @@ export default function App() {
   const normalWindowRef = useRef<{ size: { width: number; height: number } } | null>(null);
 
   // Core state loaded from LocalStorage
-  const [playlists, setPlaylists] = useState<PlaylistConfig[]>(() => {
-    const saved = localStorage.getItem('bili_playlists');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [playlists, setPlaylists] = useState<PlaylistConfig[]>(() => readJsonStorage(
+    'bili_playlists',
+    [],
+    (value): value is PlaylistConfig[] => Array.isArray(value),
+  ));
+  const [playlistStorageMode, setPlaylistStorageMode] = useState<'loading' | 'indexeddb' | 'localStorage'>('loading');
 
   // SESSDATA is only a short-lived input value. Rust stores it in Windows Credential Manager.
   const [sessdata, setSessdata] = useState<string>('');
 
-  const [history, setHistory] = useState<PlaybackHistoryItem[]>(() => {
-    const saved = localStorage.getItem('bili_player_history');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [history, setHistory] = useState<PlaybackHistoryItem[]>(() => readJsonStorage(
+    'bili_player_history',
+    [],
+    (value): value is PlaybackHistoryItem[] => Array.isArray(value),
+  ));
 
   // Player Settings
   const [autoNext, setAutoNext] = useState<boolean>(() => {
@@ -63,15 +78,31 @@ export default function App() {
     return (saved as 'pure' | 'balanced') || 'pure';
   });
 
-  const [currentSong, setCurrentSong] = useState<Song | null>(() => {
-    const saved = localStorage.getItem('bili_current_song');
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [currentSong, setCurrentSong] = useState<Song | null>(() => readJsonStorage<Song | null>(
+    'bili_current_song',
+    null,
+    (value): value is Song | null => value === null || (
+      typeof value === 'object' && value !== null && typeof (value as Song).bvid === 'string'
+    ),
+  ));
+  const playbackTrailRef = useRef<PlaybackTrailItem[]>(buildPlaybackTrail(history, currentSong));
+  const playbackTrailIndexRef = useRef(playbackTrailRef.current.length - 1);
+  const [canGoPrevious, setCanGoPrevious] = useState(playbackTrailIndexRef.current > 0);
 
   // Save states to LocalStorage
   useEffect(() => {
     // Remove credentials left by older versions; credentials now live in Windows Credential Manager.
     localStorage.removeItem('bili_sessdata');
+  }, []);
+
+  useEffect(() => {
+    if (!(window as any).__TAURI_INTERNALS__ || updateCheckStartedRef.current) return;
+    updateCheckStartedRef.current = true;
+    check({ timeout: 10_000 })
+      .then((update) => {
+        if (update) setAvailableUpdate(update);
+      })
+      .catch((error) => console.warn('检查应用更新失败:', error));
   }, []);
 
   useEffect(() => {
@@ -86,8 +117,47 @@ export default function App() {
   }, [usageSeconds]);
 
   useEffect(() => {
-    localStorage.setItem('bili_playlists', JSON.stringify(playlists));
-  }, [playlists]);
+    let cancelled = false;
+    const initializePlaylistStorage = async () => {
+      try {
+        if (hasStorageValue('bili_playlists')) {
+          await savePlaylistCache(playlists);
+          removeStorageValue('bili_playlists');
+        } else {
+          const cached = await loadPlaylistCache();
+          if (!cancelled && cached) {
+            setPlaylists((current) => {
+              if (current.length === 0) return cached;
+              const currentIds = new Set(current.map((playlist) => playlist.id));
+              return [...cached.filter((playlist) => !currentIds.has(playlist.id)), ...current];
+            });
+          }
+        }
+        if (!cancelled) setPlaylistStorageMode('indexeddb');
+      } catch (error) {
+        console.warn('IndexedDB playlist storage unavailable; using localStorage:', error);
+        if (!cancelled) setPlaylistStorageMode('localStorage');
+      }
+    };
+    initializePlaylistStorage();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (playlistStorageMode === 'loading') return;
+    const timer = window.setTimeout(() => {
+      if (playlistStorageMode === 'indexeddb') {
+        savePlaylistCache(playlists).catch((error) => {
+          console.error('Failed to save playlist cache:', error);
+          setPlaylistStorageMode('localStorage');
+          localStorage.setItem('bili_playlists', JSON.stringify(playlists));
+        });
+      } else {
+        localStorage.setItem('bili_playlists', JSON.stringify(playlists));
+      }
+    }, 100);
+    return () => window.clearTimeout(timer);
+  }, [playlists, playlistStorageMode]);
 
   useEffect(() => {
     localStorage.setItem('bili_player_history', JSON.stringify(history));
@@ -199,15 +269,7 @@ export default function App() {
   }, []);
 
   // Combined active songs pool
-  const allActiveSongs = useMemo(() => {
-    const songs: Song[] = [];
-    playlists.forEach((p) => {
-      if (p.isActive !== false && p.isLoaded && p.songs.length > 0) {
-        songs.push(...p.songs);
-      }
-    });
-    return songs;
-  }, [playlists]);
+  const allActiveSongs = useMemo(() => getActiveUniqueSongs(playlists), [playlists]);
 
   // Track uploader play counts or local counts
   const incrementPlayCount = (songToCount: Song) => {
@@ -224,8 +286,16 @@ export default function App() {
     );
   };
 
-  // Play a specific song
-  const handlePlaySong = (song: Song) => {
+  // Play a specific song. Navigation history is kept separately from the
+  // playback log so repeated "previous" actions can continue walking back.
+  const handlePlaySong = (song: Song, addToTrail = true) => {
+    if (addToTrail) {
+      const nextTrail = playbackTrailRef.current.slice(0, playbackTrailIndexRef.current + 1);
+      nextTrail.push({ bvid: song.bvid, playlistId: song.playlistId });
+      playbackTrailRef.current = nextTrail.slice(-50);
+      playbackTrailIndexRef.current = playbackTrailRef.current.length - 1;
+      setCanGoPrevious(playbackTrailIndexRef.current > 0);
+    }
     setCurrentSong(song);
     incrementPlayCount(song);
     
@@ -238,6 +308,7 @@ export default function App() {
       author: song.author,
       playedAt: Date.now(),
       playlistName: song.playlistName,
+      playlistId: song.playlistId,
     };
     
     setHistory((prev) => [historyItem, ...prev.slice(0, 49)]); // Keep top 50 history
@@ -260,25 +331,56 @@ export default function App() {
     }
   };
 
-  // Previous song logic (based on local playback history stack)
+  // Previous song logic (based on an independent navigation trail)
   const playPrevSong = () => {
-    if (history.length <= 1) return;
-
-    // The first item in history is the currently playing song
-    // We want to find the second item and play it
-    const previous = history.find((item) => item.bvid !== currentSong?.bvid);
-    const song = previous
-      ? allActiveSongs.find((s) => s.bvid === previous.bvid && s.playlistName === previous.playlistName)
-        || allActiveSongs.find((s) => s.bvid === previous.bvid)
-      : undefined;
-    
-    if (song) {
-      handlePlaySong(song);
-    }
+    const previous = findPreviousPlayableSong(
+      playbackTrailRef.current,
+      playbackTrailIndexRef.current,
+      allActiveSongs,
+    );
+    if (!previous) return;
+    playbackTrailIndexRef.current = previous.index;
+    setCanGoPrevious(previous.index > 0);
+    handlePlaySong(previous.song, false);
   };
 
   const clearHistory = () => {
     setHistory([]);
+    playbackTrailRef.current = currentSong
+      ? [{ bvid: currentSong.bvid, playlistId: currentSong.playlistId }]
+      : [];
+    playbackTrailIndexRef.current = playbackTrailRef.current.length - 1;
+    setCanGoPrevious(false);
+  };
+
+  const installAvailableUpdate = async () => {
+    if (!availableUpdate || (updateStatus !== 'idle' && updateStatus !== 'error')) return;
+    setUpdateStatus('downloading');
+    setUpdateProgress(0);
+    setUpdateError(null);
+    let downloaded = 0;
+    let contentLength = 0;
+    try {
+      await availableUpdate.downloadAndInstall((event) => {
+        if (event.event === 'Started') {
+          contentLength = event.data.contentLength || 0;
+        } else if (event.event === 'Progress') {
+          downloaded += event.data.chunkLength;
+          if (contentLength > 0) {
+            setUpdateProgress(Math.min(100, Math.round((downloaded / contentLength) * 100)));
+          }
+        } else if (event.event === 'Finished') {
+          setUpdateProgress(100);
+          setUpdateStatus('installing');
+        }
+      });
+      setUpdateStatus('restarting');
+      await relaunch();
+    } catch (error) {
+      console.error('自动更新失败:', error);
+      setUpdateError(String(error || '未知错误'));
+      setUpdateStatus('error');
+    }
   };
 
   return (
@@ -405,7 +507,12 @@ export default function App() {
                   <h1 className="text-base font-bold tracking-[0.15em] text-white font-mono uppercase">
                     BILI-RANDOMIZER
                   </h1>
-                  <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded font-mono text-cyan-400">v1.06</span>
+                  <span
+                    className="text-[10px] bg-white/10 px-2 py-0.5 rounded font-mono text-cyan-400"
+                    title="应用启动时会自动检查 GitHub 新版本"
+                  >
+                    v{packageJson.version}
+                  </span>
                 </div>
                 <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-0.5">
                   突破单收藏夹 1000 上限 · 跨歌单无缝随机
@@ -470,6 +577,60 @@ export default function App() {
         </header>
       )}
 
+      <AnimatePresence>
+        {!isMiniCDMode && availableUpdate && !updateDismissed && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-pink-500/10 border-b border-cyan-400/20"
+          >
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-cyan-400/10 border border-cyan-400/20 text-cyan-400 flex items-center justify-center flex-shrink-0">
+                  <BellRing className="w-4.5 h-4.5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-slate-100">
+                    发现新版本 v{availableUpdate.version}
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {updateStatus === 'idle' && `当前版本 v${availableUpdate.currentVersion}，点击即可自动下载、安装并重启。`}
+                    {updateStatus === 'downloading' && `正在下载更新${updateProgress > 0 ? `：${updateProgress}%` : '…'}`}
+                    {updateStatus === 'installing' && '下载完成，正在安装更新…'}
+                    {updateStatus === 'restarting' && '安装完成，正在重新启动应用…'}
+                    {updateStatus === 'error' && `更新失败：${updateError || '请稍后重试'}`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 self-end sm:self-auto">
+                <button
+                  onClick={installAvailableUpdate}
+                  disabled={updateStatus !== 'idle' && updateStatus !== 'error'}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-cyan-400 text-slate-950 hover:bg-cyan-300 disabled:opacity-60 disabled:cursor-wait text-xs font-bold transition-colors cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  {updateStatus === 'idle' && '立即更新'}
+                  {updateStatus === 'error' && '重新尝试'}
+                  {updateStatus === 'downloading' && (updateProgress > 0 ? `${updateProgress}%` : '下载中')}
+                  {updateStatus === 'installing' && '安装中'}
+                  {updateStatus === 'restarting' && '重启中'}
+                </button>
+                {(updateStatus === 'idle' || updateStatus === 'error') && (
+                  <button
+                    onClick={() => setUpdateDismissed(true)}
+                    className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                    title="暂时忽略"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Main Content Area */}
       <main id="app-main-content" className={isMiniCDMode ? "w-screen h-screen flex items-center justify-center bg-transparent overflow-hidden" : "flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 relative"}>
         
@@ -501,7 +662,7 @@ export default function App() {
               currentSong={currentSong}
               onNext={playNextSong}
               onPrev={playPrevSong}
-              history={history}
+              canGoPrevious={canGoPrevious}
               autoNext={autoNext}
               setAutoNext={setAutoNext}
               countdownBuffer={countdownBuffer}

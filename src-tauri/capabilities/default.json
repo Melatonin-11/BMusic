@@ -17,6 +17,8 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
     "core:window:allow-center",
+    "updater:default",
+    "process:default",
     "core:app:default",
     "core:resources:default"
   ]

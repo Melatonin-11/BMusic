@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { PlaylistConfig, Song } from '../types';
-import { Play, RotateCw, Trash2, ShieldAlert, Key, HelpCircle, FolderHeart, Plus, CheckCircle2, AlertCircle, Eye, EyeOff, Copy, Check, Edit2, X } from 'lucide-react';
+import { RotateCw, Trash2, ShieldAlert, Key, HelpCircle, FolderHeart, Plus, CheckCircle2, AlertCircle, Eye, EyeOff, Copy, Check, Edit2, X } from 'lucide-react';
 import { encodePlaylistBackup, parsePlaylistBackup } from '../utils/playlistImport';
 import { remainingPageBatches } from '../utils/pagination';
 
 interface PlaylistConfigProps {
   playlists: PlaylistConfig[];
-  setPlaylists: (playlists: PlaylistConfig[]) => void;
+  setPlaylists: React.Dispatch<React.SetStateAction<PlaylistConfig[]>>;
   sessdata: string;
   setSessdata: (sessdata: string) => void;
 }
@@ -63,6 +63,7 @@ export default function PlaylistConfigComponent({
   const [showSessdata, setShowSessdata] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
+  const syncingIdsRef = useRef(new Set<string>());
 
   // Backup & Restore states
   const [isCopied, setIsCopied] = useState(false);
@@ -215,15 +216,17 @@ export default function PlaylistConfigComponent({
   };
 
   const removePlaylist = (id: string) => {
-    setPlaylists(playlists.filter((p) => p.id !== id));
-    const newLoading = { ...loadingStates };
-    delete newLoading[id];
-    setLoadingStates(newLoading);
+    setPlaylists((current) => current.filter((p) => p.id !== id));
+    setLoadingStates((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
     setConfirmDeleteId(null);
   };
 
   const togglePlaylistActive = (id: string) => {
-    setPlaylists(playlists.map((playlist) => (
+    setPlaylists((current) => current.map((playlist) => (
       playlist.id === id ? { ...playlist, isActive: playlist.isActive === false } : playlist
     )));
   };
@@ -233,7 +236,7 @@ export default function PlaylistConfigComponent({
     if (!trimmed) return;
     
     setPlaylists(
-      playlists.map((p) => {
+      (current) => current.map((p) => {
         if (p.id === id) {
           return {
             ...p,
@@ -252,6 +255,8 @@ export default function PlaylistConfigComponent({
 
   // Safe paginated batch loader to prevent B站 API rate limiting
   const syncPlaylist = async (playlistId: string) => {
+    if (syncingIdsRef.current.has(playlistId)) return;
+    syncingIdsRef.current.add(playlistId);
     setLoadingStates((prev) => ({
       ...prev,
       [playlistId]: { status: 'fetching_page_1', progress: 0, total: 0, loaded: 0 },
@@ -377,6 +382,8 @@ export default function PlaylistConfigComponent({
           errorMsg: explainSyncError(error),
         },
       }));
+    } finally {
+      syncingIdsRef.current.delete(playlistId);
     }
   };
 
@@ -387,8 +394,11 @@ export default function PlaylistConfigComponent({
     count: number,
     songs: Song[]
   ) => {
+    const uniqueSongs = [...new Map(
+      songs.filter((song) => song.bvid).map((song) => [song.bvid, song]),
+    ).values()];
     setPlaylists(
-      playlists.map((p) => {
+      (current) => current.map((p) => {
         if (p.id === id) {
           const finalName = p.name.startsWith('未命名') ? name : p.name;
           const previousCounts = new Map(p.songs.map((song) => [song.bvid, song.playCount || 0]));
@@ -398,7 +408,7 @@ export default function PlaylistConfigComponent({
             cover: cover || p.cover,
             videoCount: count,
             isLoaded: true,
-            songs: songs.map((s) => ({
+            songs: uniqueSongs.map((s) => ({
               ...s,
               playlistName: finalName,
               playCount: previousCounts.get(s.bvid) || 0,
@@ -411,7 +421,7 @@ export default function PlaylistConfigComponent({
 
     setLoadingStates((prev) => ({
       ...prev,
-      [id]: { status: 'done', progress: 100, total: count, loaded: songs.length },
+      [id]: { status: 'done', progress: 100, total: count, loaded: uniqueSongs.length },
     }));
   };
 
