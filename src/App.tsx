@@ -8,7 +8,7 @@ import Player from './components/Player';
 import SongList from './components/SongList';
 import StatsDashboard from './components/StatsDashboard';
 import { PlaylistConfig, Song, PlaybackHistoryItem } from './types';
-import { Music, FolderHeart, BarChart3, Radio, HelpCircle, AlertCircle, Shuffle, Minus, Square, X, BellRing, Download } from 'lucide-react';
+import { Music, FolderHeart, BarChart3, Radio, HelpCircle, AlertCircle, Shuffle, Minus, Square, X, BellRing, Download, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { getActiveUniqueSongs, pickNextSong } from './utils/playback';
 import { buildPlaybackTrail, findPreviousPlayableSong } from './utils/playbackHistory';
 import type { PlaybackTrailItem } from './utils/playbackHistory';
@@ -19,7 +19,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'player' | 'songlist' | 'playlists' | 'stats'>('player');
   const [showSplash, setShowSplash] = useState<boolean>(true);
   const [availableUpdate, setAvailableUpdate] = useState<Update | null>(null);
-  const [updateDismissed, setUpdateDismissed] = useState(false);
+  const [updateDismissed, setUpdateDismissed] = useState(true);
+  const [updateCheckStatus, setUpdateCheckStatus] = useState<'idle' | 'checking' | 'current' | 'available' | 'error'>('idle');
+  const [updateCheckError, setUpdateCheckError] = useState<string | null>(null);
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'downloading' | 'installing' | 'restarting' | 'error'>('idle');
   const [updateProgress, setUpdateProgress] = useState(0);
   const [updateError, setUpdateError] = useState<string | null>(null);
@@ -95,14 +97,55 @@ export default function App() {
     localStorage.removeItem('bili_sessdata');
   }, []);
 
+  const explainUpdateCheckError = (error: unknown) => {
+    const message = String(error || '未知错误');
+    if (/timed?\s*out|timeout/i.test(message)) {
+      return '检查更新超时，请确认网络连接后稍后重试。';
+    }
+    if (/404|latest\.json|not found/i.test(message)) {
+      return 'GitHub Release 中暂未找到更新清单 latest.json，请确认新版本已构建完成。';
+    }
+    if (/network|fetch|dns|connect|request|resolve/i.test(message)) {
+      return '无法连接更新服务器，请检查网络或 GitHub 访问状态后重试。';
+    }
+    return `检查更新失败：${message}`;
+  };
+
+  const checkForApplicationUpdate = async (manual = false) => {
+    if (!(window as any).__TAURI_INTERNALS__) {
+      if (manual) {
+        setUpdateCheckStatus('error');
+        setUpdateCheckError('只有安装后的桌面版可以检查应用更新。');
+        setUpdateDismissed(false);
+      }
+      return;
+    }
+
+    if (updateCheckStatus === 'checking' || updateStatus === 'downloading' || updateStatus === 'installing' || updateStatus === 'restarting') {
+      return;
+    }
+
+    setUpdateCheckStatus('checking');
+    setUpdateCheckError(null);
+    if (manual) setUpdateDismissed(false);
+
+    try {
+      const update = await check({ timeout: 10_000 });
+      setAvailableUpdate(update);
+      setUpdateCheckStatus(update ? 'available' : 'current');
+      if (update) setUpdateDismissed(false);
+    } catch (error) {
+      console.warn('检查应用更新失败:', error);
+      setAvailableUpdate(null);
+      setUpdateCheckStatus('error');
+      setUpdateCheckError(explainUpdateCheckError(error));
+    }
+  };
+
   useEffect(() => {
     if (!(window as any).__TAURI_INTERNALS__ || updateCheckStartedRef.current) return;
     updateCheckStartedRef.current = true;
-    check({ timeout: 10_000 })
-      .then((update) => {
-        if (update) setAvailableUpdate(update);
-      })
-      .catch((error) => console.warn('检查应用更新失败:', error));
+    void checkForApplicationUpdate(false);
   }, []);
 
   useEffect(() => {
@@ -520,7 +563,8 @@ export default function App() {
               </div>
             </div>
 
-            {/* Tab buttons */}
+            {/* Tab buttons and updater */}
+            <div className="flex items-center gap-2">
             <nav className="flex items-center bg-[#050507] border border-white/5 rounded-xl p-1">
               <button
                 onClick={() => setActiveTab('player')}
@@ -573,12 +617,38 @@ export default function App() {
                 <span>曲库统计</span>
               </button>
             </nav>
+              <button
+                onClick={() => availableUpdate ? void installAvailableUpdate() : void checkForApplicationUpdate(true)}
+                disabled={updateCheckStatus === 'checking' || updateStatus === 'downloading' || updateStatus === 'installing' || updateStatus === 'restarting'}
+                title={updateCheckError || (availableUpdate ? `发现新版本 v${availableUpdate.version}` : '手动检查应用更新')}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer disabled:cursor-wait disabled:opacity-60 ${
+                  availableUpdate
+                    ? 'bg-cyan-400 text-slate-950 border-cyan-300 hover:bg-cyan-300'
+                    : updateCheckStatus === 'error'
+                      ? 'bg-red-500/10 text-red-300 border-red-400/25 hover:bg-red-500/15'
+                      : 'bg-[#050507] text-slate-300 border-white/10 hover:text-cyan-300 hover:border-cyan-400/30'
+                }`}
+              >
+                {availableUpdate ? (
+                  <Download className="w-3.5 h-3.5" />
+                ) : updateCheckStatus === 'current' ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <RefreshCw className={`w-3.5 h-3.5 ${updateCheckStatus === 'checking' ? 'animate-spin' : ''}`} />
+                )}
+                {availableUpdate && `更新 v${availableUpdate.version}`}
+                {!availableUpdate && updateCheckStatus === 'idle' && '检查更新'}
+                {!availableUpdate && updateCheckStatus === 'checking' && '检查中'}
+                {!availableUpdate && updateCheckStatus === 'current' && '已是最新'}
+                {!availableUpdate && updateCheckStatus === 'error' && '重试更新检查'}
+              </button>
+            </div>
           </div>
         </header>
       )}
 
       <AnimatePresence>
-        {!isMiniCDMode && availableUpdate && !updateDismissed && (
+        {!isMiniCDMode && !updateDismissed && (availableUpdate || updateCheckStatus !== 'idle') && (
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -588,35 +658,52 @@ export default function App() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-9 h-9 rounded-xl bg-cyan-400/10 border border-cyan-400/20 text-cyan-400 flex items-center justify-center flex-shrink-0">
-                  <BellRing className="w-4.5 h-4.5" />
+                  {updateCheckStatus === 'current' ? <CheckCircle2 className="w-4.5 h-4.5 text-emerald-400" /> : <BellRing className="w-4.5 h-4.5" />}
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-slate-100">
-                    发现新版本 v{availableUpdate.version}
+                    {availableUpdate && `发现新版本 v${availableUpdate.version}`}
+                    {!availableUpdate && updateCheckStatus === 'checking' && '正在检查应用更新'}
+                    {!availableUpdate && updateCheckStatus === 'current' && '当前已是最新版本'}
+                    {!availableUpdate && updateCheckStatus === 'error' && '检查更新失败'}
                   </p>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    {updateStatus === 'idle' && `当前版本 v${availableUpdate.currentVersion}，点击即可自动下载、安装并重启。`}
-                    {updateStatus === 'downloading' && `正在下载更新${updateProgress > 0 ? `：${updateProgress}%` : '…'}`}
-                    {updateStatus === 'installing' && '下载完成，正在安装更新…'}
-                    {updateStatus === 'restarting' && '安装完成，正在重新启动应用…'}
-                    {updateStatus === 'error' && `更新失败：${updateError || '请稍后重试'}`}
+                    {availableUpdate && updateStatus === 'idle' && `当前版本 v${availableUpdate.currentVersion}，点击即可自动下载、安装并重启。`}
+                    {availableUpdate && updateStatus === 'downloading' && `正在下载更新${updateProgress > 0 ? `：${updateProgress}%` : '…'}`}
+                    {availableUpdate && updateStatus === 'installing' && '下载完成，正在安装更新…'}
+                    {availableUpdate && updateStatus === 'restarting' && '安装完成，正在重新启动应用…'}
+                    {availableUpdate && updateStatus === 'error' && `更新失败：${updateError || '请稍后重试'}`}
+                    {!availableUpdate && updateCheckStatus === 'checking' && '正在连接 GitHub Release，请稍候…'}
+                    {!availableUpdate && updateCheckStatus === 'current' && `当前版本 v${packageJson.version}，暂时没有更高版本。`}
+                    {!availableUpdate && updateCheckStatus === 'error' && updateCheckError}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2 self-end sm:self-auto">
-                <button
-                  onClick={installAvailableUpdate}
-                  disabled={updateStatus !== 'idle' && updateStatus !== 'error'}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-cyan-400 text-slate-950 hover:bg-cyan-300 disabled:opacity-60 disabled:cursor-wait text-xs font-bold transition-colors cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  {updateStatus === 'idle' && '立即更新'}
-                  {updateStatus === 'error' && '重新尝试'}
-                  {updateStatus === 'downloading' && (updateProgress > 0 ? `${updateProgress}%` : '下载中')}
-                  {updateStatus === 'installing' && '安装中'}
-                  {updateStatus === 'restarting' && '重启中'}
-                </button>
-                {(updateStatus === 'idle' || updateStatus === 'error') && (
+                {availableUpdate && (
+                  <button
+                    onClick={installAvailableUpdate}
+                    disabled={updateStatus !== 'idle' && updateStatus !== 'error'}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-cyan-400 text-slate-950 hover:bg-cyan-300 disabled:opacity-60 disabled:cursor-wait text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    {updateStatus === 'idle' && '立即更新'}
+                    {updateStatus === 'error' && '重新尝试'}
+                    {updateStatus === 'downloading' && (updateProgress > 0 ? `${updateProgress}%` : '下载中')}
+                    {updateStatus === 'installing' && '安装中'}
+                    {updateStatus === 'restarting' && '重启中'}
+                  </button>
+                )}
+                {!availableUpdate && updateCheckStatus === 'error' && (
+                  <button
+                    onClick={() => void checkForApplicationUpdate(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-cyan-400 text-slate-950 hover:bg-cyan-300 text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    重新检查
+                  </button>
+                )}
+                {updateCheckStatus !== 'checking' && (updateStatus === 'idle' || updateStatus === 'error') && (
                   <button
                     onClick={() => setUpdateDismissed(true)}
                     className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
