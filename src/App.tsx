@@ -298,7 +298,13 @@ export default function App() {
           size: { width: size.width / scaleFactor, height: size.height / scaleFactor },
         };
         // Extra transparent margin prevents the record shadow from being clipped by the WebView edge.
-        const miniSize = 270;
+        const miniMinSize = 190;
+        const miniMaxSize = 270;
+        let miniSize = miniMaxSize;
+        const savedMiniSize = Number(localStorage.getItem('bili_mini_window_size'));
+        if (Number.isFinite(savedMiniSize)) {
+          miniSize = Math.min(miniMaxSize, Math.max(miniMinSize, savedMiniSize));
+        }
         const centerX = position.x / scaleFactor + size.width / scaleFactor / 2;
         const centerY = position.y / scaleFactor + size.height / scaleFactor / 2;
         let miniPosition = { x: centerX - miniSize / 2, y: centerY - miniSize / 2 };
@@ -312,23 +318,32 @@ export default function App() {
         }
         await appWindow.setDecorations(false);
         await appWindow.setShadow(false);
-        await appWindow.setResizable(false);
+        await appWindow.setResizable(true);
+        await appWindow.setMinSize(new LogicalSize(miniMinSize, miniMinSize));
+        await appWindow.setMaxSize(new LogicalSize(miniMaxSize, miniMaxSize));
         await appWindow.setSize(new LogicalSize(miniSize, miniSize));
         await appWindow.setPosition(new LogicalPosition(miniPosition.x, miniPosition.y));
         await appWindow.setAlwaysOnTop(true);
       } else if (normalWindowRef.current) {
         const normal = normalWindowRef.current;
-        const [miniPosition, scaleFactor] = await Promise.all([
+        const [miniPosition, miniSize, scaleFactor] = await Promise.all([
           appWindow.outerPosition(),
+          appWindow.outerSize(),
           appWindow.scaleFactor(),
         ]);
         localStorage.setItem('bili_mini_window_position', JSON.stringify({
           x: miniPosition.x / scaleFactor,
           y: miniPosition.y / scaleFactor,
         }));
+        localStorage.setItem(
+          'bili_mini_window_size',
+          String(Math.min(miniSize.width, miniSize.height) / scaleFactor),
+        );
         await appWindow.setDecorations(false);
         await appWindow.setShadow(true);
         await appWindow.setResizable(true);
+        await appWindow.setMinSize(null);
+        await appWindow.setMaxSize(null);
         await appWindow.setSize(new LogicalSize(normal.size.width, normal.size.height));
         await appWindow.center();
         await appWindow.setAlwaysOnTop(false);

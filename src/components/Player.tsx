@@ -52,12 +52,31 @@ export default function Player({
 
   const handlePointerDown = async (e: React.PointerEvent) => {
     if (!isMiniCDMode) return;
-    if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('a')) return;
+    if (
+      (e.target as HTMLElement).closest('button')
+      || (e.target as HTMLElement).closest('a')
+      || (e.target as HTMLElement).closest('[data-mini-resize-handle]')
+    ) return;
     try {
       const { getCurrentWindow } = await import('@tauri-apps/api/window');
       await getCurrentWindow().startDragging();
     } catch (error) {
       console.error('Failed to drag mini window:', error);
+    }
+  };
+
+  const handleResizePointerDown = async (
+    e: React.PointerEvent,
+    direction: 'East' | 'North' | 'NorthEast' | 'NorthWest' | 'South' | 'SouthEast' | 'SouthWest' | 'West',
+  ) => {
+    if (!isMiniCDMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      await getCurrentWindow().startResizeDragging(direction);
+    } catch (error) {
+      console.error('Failed to resize mini window:', error);
     }
   };
 
@@ -386,15 +405,25 @@ export default function Player({
       {isMiniCDMode ? (
         /* MINI CD MODE DESIGN */
         <>
+          {/* Invisible native resize zones provide familiar edge/corner cursors. */}
+          <div data-mini-resize-handle onPointerDown={(e) => handleResizePointerDown(e, 'North')} className="absolute inset-x-3 top-0 z-50 h-2 cursor-ns-resize" />
+          <div data-mini-resize-handle onPointerDown={(e) => handleResizePointerDown(e, 'South')} className="absolute inset-x-3 bottom-0 z-50 h-2 cursor-ns-resize" />
+          <div data-mini-resize-handle onPointerDown={(e) => handleResizePointerDown(e, 'West')} className="absolute inset-y-3 left-0 z-50 w-2 cursor-ew-resize" />
+          <div data-mini-resize-handle onPointerDown={(e) => handleResizePointerDown(e, 'East')} className="absolute inset-y-3 right-0 z-50 w-2 cursor-ew-resize" />
+          <div data-mini-resize-handle onPointerDown={(e) => handleResizePointerDown(e, 'NorthWest')} className="absolute left-0 top-0 z-[51] h-4 w-4 cursor-nwse-resize" />
+          <div data-mini-resize-handle onPointerDown={(e) => handleResizePointerDown(e, 'NorthEast')} className="absolute right-0 top-0 z-[51] h-4 w-4 cursor-nesw-resize" />
+          <div data-mini-resize-handle onPointerDown={(e) => handleResizePointerDown(e, 'SouthWest')} className="absolute bottom-0 left-0 z-[51] h-4 w-4 cursor-nesw-resize" />
+          <div data-mini-resize-handle onPointerDown={(e) => handleResizePointerDown(e, 'SouthEast')} className="absolute bottom-0 right-0 z-[51] h-4 w-4 cursor-nwse-resize" />
+
           {/* Outer Circular Ring */}
           <div className="relative z-10 flex flex-col items-center justify-center select-none">
             {/* Spinning CD Cover */}
             <div
               className="relative active:scale-95 transition-transform cursor-grab active:cursor-grabbing"
-              title="拖动唱片移动；悬停显示播放控制"
+              title="拖动唱片移动；拖动窗口边缘调整大小；悬停显示播放控制"
             >
               {/* Spinning full-cover record. Controls live outside this rotating layer. */}
-              <div className={`w-44 h-44 rounded-full bg-slate-950 border-[6px] border-slate-900 shadow-[0_10px_28px_rgba(0,0,0,0.65)] relative overflow-hidden ${isTimerActive && timeLeft > 0 ? 'animate-spin [animation-duration:15s]' : ''}`}>
+              <div className={`w-[65vmin] h-[65vmin] max-w-44 max-h-44 rounded-full bg-slate-950 border-[clamp(4px,2.2vmin,6px)] border-slate-900 shadow-[0_10px_28px_rgba(0,0,0,0.65)] relative overflow-hidden ${isTimerActive && timeLeft > 0 ? 'animate-spin [animation-duration:15s]' : ''}`}>
                 <img
                   src={currentSong.cover}
                   alt={currentSong.title}
@@ -406,28 +435,30 @@ export default function Player({
               </div>
 
               {/* Previous / play / next controls stay fixed in the record center. */}
-              <div className="absolute inset-0 rounded-full bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity duration-200">
+              <div className="absolute inset-0 rounded-full bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-[clamp(0.25rem,2vmin,0.5rem)] transition-opacity duration-200">
                 <button
                   onClick={(e) => { e.stopPropagation(); onPrev(); }}
                   disabled={!canGoPrevious}
-                  className="w-9 h-9 rounded-full bg-black/65 border border-white/15 text-white/85 hover:text-white hover:bg-black/85 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-lg"
+                  className="w-[clamp(1.75rem,13.3vmin,2.25rem)] h-[clamp(1.75rem,13.3vmin,2.25rem)] rounded-full bg-black/65 border border-white/15 text-white/85 hover:text-white hover:bg-black/85 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-lg"
                   title="上一首"
                 >
-                  <SkipBack className="w-4 h-4 fill-current" />
+                  <SkipBack className="w-[clamp(0.75rem,5.9vmin,1rem)] h-[clamp(0.75rem,5.9vmin,1rem)] fill-current" />
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); togglePlayback(); }}
-                  className="w-12 h-12 rounded-full bg-cyan-400 text-slate-950 hover:bg-cyan-300 flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-lg shadow-cyan-500/30"
+                  className="w-[clamp(2.25rem,17.8vmin,3rem)] h-[clamp(2.25rem,17.8vmin,3rem)] rounded-full bg-cyan-400 text-slate-950 hover:bg-cyan-300 flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-lg shadow-cyan-500/30"
                   title={isTimerActive ? "暂停" : "播放"}
                 >
-                  {isTimerActive ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-0.5" />}
+                  {isTimerActive
+                    ? <Pause className="w-[clamp(1.125rem,8.9vmin,1.5rem)] h-[clamp(1.125rem,8.9vmin,1.5rem)] fill-current" />
+                    : <Play className="w-[clamp(1.125rem,8.9vmin,1.5rem)] h-[clamp(1.125rem,8.9vmin,1.5rem)] fill-current ml-0.5" />}
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); onNext(); }}
-                  className="w-9 h-9 rounded-full bg-black/65 border border-white/15 text-white/85 hover:text-white hover:bg-black/85 flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-lg"
+                  className="w-[clamp(1.75rem,13.3vmin,2.25rem)] h-[clamp(1.75rem,13.3vmin,2.25rem)] rounded-full bg-black/65 border border-white/15 text-white/85 hover:text-white hover:bg-black/85 flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-lg"
                   title="下一首"
                 >
-                  <SkipForward className="w-4 h-4 fill-current" />
+                  <SkipForward className="w-[clamp(0.75rem,5.9vmin,1rem)] h-[clamp(0.75rem,5.9vmin,1rem)] fill-current" />
                 </button>
               </div>
             </div>
@@ -437,10 +468,10 @@ export default function Player({
           {/* Back to Large view controller button */}
           <button
             onClick={() => setIsMiniCDMode && setIsMiniCDMode(false)}
-            className="absolute top-9 right-9 opacity-0 group-hover:opacity-100 text-slate-200 hover:text-white bg-black/70 hover:bg-black/90 p-2 rounded-full transition-all cursor-pointer shadow-lg border border-white/15 z-20"
+            className="absolute top-[clamp(1rem,13vmin,2.25rem)] right-[clamp(1rem,13vmin,2.25rem)] opacity-0 group-hover:opacity-100 text-slate-200 hover:text-white bg-black/70 hover:bg-black/90 p-[clamp(0.375rem,2.9vmin,0.5rem)] rounded-full transition-all cursor-pointer shadow-lg border border-white/15 z-20"
             title="返回主窗口"
           >
-            <Maximize2 className="w-4 h-4" />
+            <Maximize2 className="w-[clamp(0.875rem,5.9vmin,1rem)] h-[clamp(0.875rem,5.9vmin,1rem)]" />
           </button>
 
           {/* Background Playback Gesture Overlay inside Mini View */}

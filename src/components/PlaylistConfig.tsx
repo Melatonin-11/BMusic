@@ -22,12 +22,18 @@ const fetchBilibiliPlaylist = async (
   return invoke<any>('bilibili_playlist', { mediaId, pn: page, ps: pageSize });
 };
 
-const explainSyncError = (error: unknown): string => {
+const explainSyncError = (error: unknown, accessConfirmed = false): string => {
   const detail = error instanceof Error ? error.message : String(error || '未知错误');
   const normalized = detail.toLowerCase();
 
-  if (/(-412|-352|http 429|访问频繁|请求过于频繁|风控|rate limit)/i.test(detail)) {
-    return '请求过于频繁，已触发 B 站临时风控。建议等待 5～15 分钟后重试，并避免连续同步多个大型收藏夹。';
+  if (/(-412|http\s*412)/i.test(detail)) {
+    if (accessConfirmed) {
+      return '已经成功读取收藏夹信息，但后续分页被 B 站拦截，较可能是访问过于频繁。请等待 5～15 分钟后再次尝试。';
+    }
+    return 'B 站拒绝了本次请求（HTTP 412），仅凭此状态无法确定具体原因。若其他收藏夹也失败，请等待 5～15 分钟后重试；若始终只有这个收藏夹失败，请检查收藏夹是否公开、ID 是否正确，以及当前登录账号是否有访问权限。';
+  }
+  if (/(-352|http\s*429|访问频繁|请求过于频繁|风控|rate limit)/i.test(detail)) {
+    return '可能因访问过于频繁触发了 B 站临时风控。请等待 5～15 分钟后再次尝试，期间不要连续点击同步。';
   }
   if (/(-101|未登录|账号未登录|sessdata)/i.test(detail)) {
     return '登录凭据可能已失效。请清除并重新填写 SESSDATA，然后再次同步。';
@@ -64,6 +70,8 @@ export default function PlaylistConfigComponent({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
   const syncingIdsRef = useRef(new Set<string>());
+  const activeSyncIdRef = useRef<string | null>(null);
+  const [activeSyncId, setActiveSyncId] = useState<string | null>(null);
 
   // Backup & Restore states
   const [isCopied, setIsCopied] = useState(false);
@@ -256,7 +264,15 @@ export default function PlaylistConfigComponent({
   // Safe paginated batch loader to prevent B站 API rate limiting
   const syncPlaylist = async (playlistId: string) => {
     if (syncingIdsRef.current.has(playlistId)) return;
+
+    if (activeSyncIdRef.current) {
+      return;
+    }
+
+    let accessConfirmed = false;
     syncingIdsRef.current.add(playlistId);
+    activeSyncIdRef.current = playlistId;
+    setActiveSyncId(playlistId);
     setLoadingStates((prev) => ({
       ...prev,
       [playlistId]: { status: 'fetching_page_1', progress: 0, total: 0, loaded: 0 },
@@ -269,6 +285,7 @@ export default function PlaylistConfigComponent({
       if (firstPageData.code !== 0) {
         throw new Error(`[${firstPageData.code}] ${firstPageData.message || '未知 API 错误'}`);
       }
+      accessConfirmed = true;
 
       const info = firstPageData.data.info;
       const originalName = info?.title || `收藏夹-${playlistId}`;
@@ -313,7 +330,7 @@ export default function PlaylistConfigComponent({
 
       // Create chunks of page requests to run sequentially with small gaps
       const allSongs: Song[] = [...loadedSongs];
-      const concurrencyLimit = 2;
+      const concurrencyLimit = 4;
       const delayMs = 800; // Deliberately conservative to reduce Bilibili rate limiting.
 
       const fetchPage = async (page: number): Promise<Song[]> => {
@@ -379,11 +396,13 @@ export default function PlaylistConfigComponent({
         [playlistId]: {
           ...prev[playlistId],
           status: 'error',
-          errorMsg: explainSyncError(error),
+          errorMsg: explainSyncError(error, accessConfirmed),
         },
       }));
     } finally {
       syncingIdsRef.current.delete(playlistId);
+      activeSyncIdRef.current = null;
+      setActiveSyncId(null);
     }
   };
 
@@ -590,6 +609,13 @@ export default function PlaylistConfigComponent({
           已配置的收藏夹（{playlists.length} 个）
         </h3>
 
+        {activeSyncId && (
+          <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-400/15 bg-amber-400/[0.05] px-3.5 py-2.5 text-[11px] leading-relaxed text-amber-200/80">
+            <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-300" />
+            <span>正在同步当前收藏夹，同一时间不能同步其他收藏夹。</span>
+          </div>
+        )}
+
         {playlists.length === 0 ? (
           <div id="empty-playlists-notice" className="text-center py-10 border border-white/5 bg-[#050507] rounded-2xl">
             <FolderHeart className="w-12 h-12 text-slate-700 mx-auto mb-3" />
@@ -723,7 +749,10 @@ export default function PlaylistConfigComponent({
                       </label>
                       <button
                         onClick={() => syncPlaylist(playlist.id)}
-                        disabled={loading && loading.status !== 'done' && loading.status !== 'error'}
+                        disabled={
+                          Boolean(activeSyncId)
+                          || Boolean(loading && loading.status !== 'done' && loading.status !== 'error')
+                        }
                         className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold bg-[#08080c] hover:bg-slate-900 text-cyan-400 border border-white/5 rounded-lg transition-colors disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
                       >
                         <RotateCw className={`w-3.5 h-3.5 ${(loading && loading.status !== 'done' && loading.status !== 'error') ? 'animate-spin text-cyan-400' : 'text-cyan-455'}`} />
