@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { invoke } from '@tauri-apps/api/core';
 import packageJson from '../package.json';
 import PlaylistConfigComponent from './components/PlaylistConfig';
 import Player from './components/Player';
@@ -14,6 +15,14 @@ import { buildPlaybackTrail, findPreviousPlayableSong } from './utils/playbackHi
 import type { PlaybackTrailItem } from './utils/playbackHistory';
 import { hasStorageValue, loadPlaylistCache, readJsonStorage, removeStorageValue, savePlaylistCache } from './utils/storage';
 
+const PORTABLE_UPDATE_TARGET = 'windows-x86_64-portable';
+
+interface PortableUpdateProgress {
+  phase: 'downloading' | 'installing' | 'restarting';
+  downloaded: number;
+  total: number | null;
+}
+
 export default function App() {
   const [isMiniCDMode, setIsMiniCDMode] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'player' | 'songlist' | 'playlists' | 'stats'>('player');
@@ -25,6 +34,7 @@ export default function App() {
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'downloading' | 'installing' | 'restarting' | 'error'>('idle');
   const [updateProgress, setUpdateProgress] = useState(0);
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [isPortableMode, setIsPortableMode] = useState<boolean | null>(null);
   const updateCheckStartedRef = useRef(false);
   const [usageSeconds, setUsageSeconds] = useState<number>(() => {
     const saved = Number(localStorage.getItem('bili_total_usage_seconds'));
@@ -97,6 +107,19 @@ export default function App() {
     localStorage.removeItem('bili_sessdata');
   }, []);
 
+  useEffect(() => {
+    if (!(window as any).__TAURI_INTERNALS__) {
+      setIsPortableMode(false);
+      return;
+    }
+    invoke<boolean>('is_portable_mode')
+      .then(setIsPortableMode)
+      .catch((error) => {
+        console.warn('识别便携版运行模式失败:', error);
+        setIsPortableMode(false);
+      });
+  }, []);
+
   const explainUpdateCheckError = (error: unknown) => {
     const message = String(error || '未知错误');
     if (/timed?\s*out|timeout/i.test(message)) {
@@ -104,6 +127,9 @@ export default function App() {
     }
     if (/404|latest\.json|not found/i.test(message)) {
       return 'GitHub Release 中暂未找到更新清单 latest.json，请确认新版本已构建完成。';
+    }
+    if (/target|platform|valid release/i.test(message)) {
+      return '最新版暂未包含当前发行类型的更新文件，请等待 GitHub Actions 完成后重试。';
     }
     if (/network|fetch|dns|connect|request|resolve/i.test(message)) {
       return '无法连接更新服务器，请检查网络或 GitHub 访问状态后重试。';
@@ -121,6 +147,15 @@ export default function App() {
       return;
     }
 
+    if (isPortableMode === null) {
+      if (manual) {
+        setUpdateCheckStatus('error');
+        setUpdateCheckError('正在识别应用发行类型，请稍后再试。');
+        setUpdateDismissed(false);
+      }
+      return;
+    }
+
     if (updateCheckStatus === 'checking' || updateStatus === 'downloading' || updateStatus === 'installing' || updateStatus === 'restarting') {
       return;
     }
@@ -130,7 +165,10 @@ export default function App() {
     if (manual) setUpdateDismissed(false);
 
     try {
-      const update = await check({ timeout: 10_000 });
+      const update = await check({
+        timeout: 10_000,
+        ...(isPortableMode ? { target: PORTABLE_UPDATE_TARGET } : {}),
+      });
       setAvailableUpdate(update);
       setUpdateCheckStatus(update ? 'available' : 'current');
       if (update) setUpdateDismissed(false);
@@ -143,10 +181,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!(window as any).__TAURI_INTERNALS__ || updateCheckStartedRef.current) return;
+    if (!(window as any).__TAURI_INTERNALS__ || isPortableMode === null || updateCheckStartedRef.current) return;
     updateCheckStartedRef.current = true;
     void checkForApplicationUpdate(false);
-  }, []);
+  }, [isPortableMode]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -404,6 +442,29 @@ export default function App() {
     let downloaded = 0;
     let contentLength = 0;
     try {
+      if (isPortableMode) {
+        const { listen } = await import('@tauri-apps/api/event');
+        const unlisten = await listen<PortableUpdateProgress>('portable-update-progress', ({ payload }) => {
+          if (payload.phase === 'downloading') {
+            setUpdateStatus('downloading');
+            if (payload.total && payload.total > 0) {
+              setUpdateProgress(Math.min(100, Math.round((payload.downloaded / payload.total) * 100)));
+            }
+          } else if (payload.phase === 'installing') {
+            setUpdateProgress(100);
+            setUpdateStatus('installing');
+          } else if (payload.phase === 'restarting') {
+            setUpdateStatus('restarting');
+          }
+        });
+        try {
+          await invoke('install_portable_update');
+        } finally {
+          unlisten();
+        }
+        return;
+      }
+
       await availableUpdate.downloadAndInstall((event) => {
         if (event.event === 'Started') {
           contentLength = event.data.contentLength || 0;
@@ -619,7 +680,7 @@ export default function App() {
             </nav>
               <button
                 onClick={() => availableUpdate ? void installAvailableUpdate() : void checkForApplicationUpdate(true)}
-                disabled={updateCheckStatus === 'checking' || updateStatus === 'downloading' || updateStatus === 'installing' || updateStatus === 'restarting'}
+                disabled={isPortableMode === null || updateCheckStatus === 'checking' || updateStatus === 'downloading' || updateStatus === 'installing' || updateStatus === 'restarting'}
                 title={updateCheckError || (availableUpdate ? `发现新版本 v${availableUpdate.version}` : '手动检查应用更新')}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer disabled:cursor-wait disabled:opacity-60 ${
                   availableUpdate
@@ -650,10 +711,15 @@ export default function App() {
       <AnimatePresence>
         {!isMiniCDMode && !updateDismissed && (availableUpdate || updateCheckStatus !== 'idle') && (
           <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className="bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-pink-500/10 border-b border-cyan-400/20"
+            initial={{ height: 0, opacity: 0, y: -6 }}
+            animate={{ height: 'auto', opacity: 1, y: 0 }}
+            exit={{ height: 0, opacity: 0, y: -6 }}
+            transition={{
+              height: { duration: 0.3, ease: [0.22, 1, 0.36, 1] },
+              opacity: { duration: 0.2 },
+              y: { duration: 0.24, ease: 'easeOut' },
+            }}
+            className="overflow-hidden bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-pink-500/10 border-b border-cyan-400/20"
           >
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
@@ -668,7 +734,9 @@ export default function App() {
                     {!availableUpdate && updateCheckStatus === 'error' && '检查更新失败'}
                   </p>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    {availableUpdate && updateStatus === 'idle' && `当前版本 v${availableUpdate.currentVersion}，点击即可自动下载、安装并重启。`}
+                    {availableUpdate && updateStatus === 'idle' && (isPortableMode
+                      ? `当前便携版 v${availableUpdate.currentVersion}，点击后将验签、原地替换并重启。`
+                      : `当前版本 v${availableUpdate.currentVersion}，点击即可自动下载、安装并重启。`)}
                     {availableUpdate && updateStatus === 'downloading' && `正在下载更新${updateProgress > 0 ? `：${updateProgress}%` : '…'}`}
                     {availableUpdate && updateStatus === 'installing' && '下载完成，正在安装更新…'}
                     {availableUpdate && updateStatus === 'restarting' && '安装完成，正在重新启动应用…'}

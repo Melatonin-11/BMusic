@@ -3,6 +3,9 @@
 
 use reqwest::header::{COOKIE, REFERER, USER_AGENT};
 
+mod portable_update;
+use portable_update::{install_portable_update, is_portable_mode};
+
 const CREDENTIAL_SERVICE: &str = "com.bili.randomizer";
 const CREDENTIAL_USER: &str = "bilibili-sessdata";
 
@@ -136,7 +139,9 @@ fn main() {
             bilibili_playlist,
             credential_has_sessdata,
             credential_save_sessdata,
-            credential_delete_sessdata
+            credential_delete_sessdata,
+            is_portable_mode,
+            install_portable_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

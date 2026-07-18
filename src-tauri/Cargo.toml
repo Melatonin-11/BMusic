@@ -1,6 +1,6 @@
 [package]
 name = "bili-randomizer"
-version = "1.0.9"
+version = "1.0.10"
 description = "BiliRandomizer B站收藏夹融合随机播放器"
 authors = ["BiliRandomizer contributors"]
 edition = "2021"

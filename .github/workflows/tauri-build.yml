@@ -42,12 +42,13 @@ jobs:
             - 收藏夹配置备份与恢复，可保留自定义名称和启用状态
             - SESSDATA 使用 Windows 凭据管理器保存
             - 支持在应用内自动下载、验签、安装新版本并重启
+            - v1.0.10 起，便携版也可在原目录安全替换并重启
 
             ### 下载说明
 
             - `BiliRandomizer_*_x64-setup.exe`：Windows 安装程序
             - `BiliRandomizer_*_x64_*.msi`：Windows MSI 安装包
-            - `BiliRandomizer_*_Windows_x64_Portable.zip`：免安装便携版
+            - `BiliRandomizer_*_Windows_x64_Portable.zip`：免安装便携版，请完整解压并保留 `portable.marker`
 
             下载下方 Assets 中适合自己的版本即可。首次使用时，请添加收藏夹并同步数据。
           releaseDraft: false
@@ -57,11 +58,30 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           $version = "${{ steps.tauri_build.outputs.appVersion }}"
           $portableDir = "portable\BiliRandomizer-$version"
           $zipFile = "BiliRandomizer_${version}_Windows_x64_Portable.zip"
+          $portableUpdaterFile = "BiliRandomizer_${version}_Windows_x64_Portable.exe"
+          $latestFile = "latest.json"
           New-Item -ItemType Directory -Path $portableDir -Force | Out-Null
-          Copy-Item "src-tauri\target\release\bili-randomizer.exe" "$portableDir\BiliRandomizer.exe"
+          Copy-Item "src-tauri\target\release\bili-randomizer.exe" $portableUpdaterFile
+          Copy-Item $portableUpdaterFile "$portableDir\BiliRandomizer.exe"
+          Set-Content -LiteralPath "$portableDir\portable.marker" -Value "BiliRandomizer portable distribution" -Encoding utf8NoBOM
           Compress-Archive -Path "$portableDir\*" -DestinationPath $zipFile -Force
-          gh release upload "v$version" $zipFile --clobber
+
+          npm run tauri -- signer sign $portableUpdaterFile
+          $signature = (Get-Content -Raw "$portableUpdaterFile.sig").Trim()
+
+          gh release download "v$version" --pattern $latestFile --dir . --clobber
+          $latest = Get-Content -Raw $latestFile | ConvertFrom-Json
+          $portablePlatform = [ordered]@{
+            signature = $signature
+            url = "https://github.com/${{ github.repository }}/releases/download/v$version/$portableUpdaterFile"
+          }
+          $latest.platforms | Add-Member -NotePropertyName "windows-x86_64-portable" -NotePropertyValue $portablePlatform -Force
+          $latest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $latestFile -Encoding utf8NoBOM
+
+          gh release upload "v$version" $zipFile $portableUpdaterFile "$portableUpdaterFile.sig" $latestFile --clobber
